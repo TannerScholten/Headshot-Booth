@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Operator HUD — {{ event_name }}</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="hud-container">
+        
+        <!-- Top Navigation / Stats Bar -->
+        <header class="hud-header">
+            <div class="header-left">
+                <div class="status-dot online"></div>
+                <h1 class="event-title">{{ event_name }}</h1>
+            </div>
+            
+            <div class="header-stats">
+                <div class="stat-pill">
+                    <span class="stat-label">Registered</span>
+                    <span class="stat-val" id="stat-total">{{ stats.total_attendees }}</span>
+                </div>
+                <div class="stat-pill">
+                    <span class="stat-label">Delivered</span>
+                    <span class="stat-val text-success" id="stat-sent">{{ stats.sent_deliveries }}</span>
+                </div>
+                <div class="stat-pill">
+                    <span class="stat-label">Pending</span>
+                    <span class="stat-val text-warning" id="stat-pending">{{ stats.pending_deliveries }}</span>
+                </div>
+            </div>
+
+            <div class="header-actions">
+                <button class="btn btn-secondary" id="btn-sync-google" title="Fetch latest Google Form responses">
+                    <span class="btn-icon">🔄</span> Sync Form
+                </button>
+                <a href="/templates-editor" class="btn btn-secondary" title="Edit Email Copy">
+                    <span class="btn-icon">✉️</span> Email Template
+                </a>
+            </div>
+        </header>
+
+        <!-- Main HUD Center: Active Subject Banner (High-Contrast 40pt+) -->
+        <section class="active-subject-card" id="active-card">
+            <div class="active-tag">CURRENT ACTIVE SUBJECT</div>
+            
+            {% if active_attendee %}
+            <div class="active-content" id="active-content">
+                <div class="active-id-badge">ID: {{ active_attendee.id }}</div>
+                <h2 class="active-name">{{ active_attendee.first_name }} {{ active_attendee.last_name }}</h2>
+                <div class="active-details">
+                    {% if active_attendee.title %}<span class="active-title">{{ active_attendee.title }}</span>{% endif %}
+                    {% if active_attendee.organization %}<span class="active-org"> &bull; {{ active_attendee.organization }}</span>{% endif %}
+                </div>
+                <div class="active-meta">
+                    <span class="active-email">✉️ {{ active_attendee.email }}</span>
+                    {% if active_attendee.phone %}<span class="active-phone">📞 {{ active_attendee.phone }}</span>{% endif %}
+                    {% if active_attendee.zenfolio_gallery_url %}
+                    <a href="{{ active_attendee.zenfolio_gallery_url }}" target="_blank" class="active-gallery-link">🔗 Private Gallery</a>
+                    {% endif %}
+                </div>
+                <div class="active-actions">
+                    <button class="btn btn-warning" onclick="newSession({{ active_attendee.id }})">
+                        👔 Outfit Change / Session #2
+                    </button>
+                    <button class="btn btn-outline" onclick="clearActive()">
+                        ✕ Clear Subject
+                    </button>
+                </div>
+            </div>
+            {% else %}
+            <div class="active-content empty-state" id="active-content">
+                <div class="empty-icon">📷</div>
+                <h2 class="active-name text-muted">No Subject Selected</h2>
+                <p class="empty-hint">Type a name below or press <strong>Alt+N</strong> for walk-in registration</p>
+            </div>
+            {% endif %}
+        </section>
+
+        <!-- Search & Attendee Selection Panel -->
+        <div class="workspace-grid">
+            
+            <!-- Left: Live Search & Roster -->
+            <div class="panel roster-panel">
+                <div class="panel-header">
+                    <div class="search-box">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" id="search-input" class="search-input" placeholder="Search attendees by name, org, email, or ID... (Press / to focus)" autofocus>
+                        <button class="btn-clear" id="search-clear" onclick="clearSearch()">✕</button>
+                    </div>
+                    <button class="btn btn-primary" onclick="openWalkInModal()">
+                        + Walk-In (Alt+N)
+                    </button>
+                </div>
+
+                <div class="attendee-list" id="attendee-list">
+                    <!-- Populated dynamically via JS -->
+                    {% for a in recent_attendees %}
+                    <div class="attendee-item {% if active_attendee and active_attendee.id == a.id %}selected{% endif %}" onclick="selectAttendee({{ a.id }})">
+                        <div class="item-left">
+                            <span class="item-id">#{{ a.id }}</span>
+                            <div class="item-info">
+                                <span class="item-name">{{ a.first_name }} {{ a.last_name }}</span>
+                                <span class="item-sub">
+                                    {% if a.title %}{{ a.title }}{% endif %}
+                                    {% if a.organization %} &bull; {{ a.organization }}{% endif %}
+                                </span>
+                            </div>
+                        </div>
+                        <div class="item-right">
+                            <span class="item-email">{{ a.email }}</span>
+                            {% if a.photo_count and a.photo_count > 0 %}
+                            <span class="badge badge-success">{{ a.photo_count }} photos</span>
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Right: Delivery Queue & Recent Outbox -->
+            <div class="panel queue-panel">
+                <div class="panel-header">
+                    <h3>Recent Deliveries</h3>
+                    <button class="btn btn-sm btn-secondary" onclick="refreshOutbox()">Refresh</button>
+                </div>
+                <div class="queue-list" id="queue-list">
+                    <div class="queue-loading">Loading outbox status...</div>
+                </div>
+            </div>
+
+        </div>
+
+    </div>
+
+    <!-- Walk-In Modal Popup -->
+    <div class="modal-overlay" id="walkin-modal">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h2>⚡ Quick Walk-In Registration</h2>
+                <button class="modal-close" onclick="closeWalkInModal()">✕</button>
+            </div>
+            <form id="walkin-form" onsubmit="submitWalkIn(event)">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>First Name *</label>
+                        <input type="text" id="w-first" required autofocus>
+                    </div>
+                    <div class="form-group">
+                        <label>Last Name *</label>
+                        <input type="text" id="w-last" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Email Address *</label>
+                    <input type="email" id="w-email" required placeholder="recipient@company.com">
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label>Organization / Company</label>
+                        <input type="text" id="w-org" placeholder="Acme Corp">
+                    </div>
+                    <div class="form-group">
+                        <label>Title / Role</label>
+                        <input type="text" id="w-title" placeholder="Director of Sales">
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label>Phone (Optional)</label>
+                    <input type="text" id="w-phone" placeholder="555-0192">
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" onclick="closeWalkInModal()">Cancel (Esc)</button>
+                    <button type="submit" class="btn btn-primary">Save & Set Active (Enter)</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Toast Alert Box -->
+    <div class="toast-container" id="toast-container"></div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,25 @@
+{
+  "event_name": "Conference Headshots 2026",
+  "google_sheet_csv_url": "YOUR_GOOGLE_SHEET_CSV_URL_HERE",
+  "poll_interval_seconds": 30,
+  "auto_send_emails": true,
+  "email_rate_limit_seconds": 1.8,
+  "gmail": {
+    "sender_name": "Your Name Photography",
+    "sender_email": "your_email@gmail.com",
+    "app_password": "your_app_password",
+    "smtp_server": "smtp.gmail.com",
+    "smtp_port": 587
+  },
+  "zenfolio": {
+    "username": "your_zenfolio_username_or_email",
+    "password": "your_zenfolio_password",
+    "master_group_url": "https://www.yourdomain.com/headshots2026",
+    "master_group_id": null
+  },
+  "paths": {
+    "tether_ingest_dir": "shoot_folders/01_Tether_Ingest",
+    "ready_to_deliver_dir": "shoot_folders/03_Ready_To_Deliver",
+    "database_file": "data/booth.db"
+  }
+}

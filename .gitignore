@@ -1,0 +1,29 @@
+# Python cache & artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.env
+.venv/
+env/
+venv/
+
+# Database & SQLite files
+data/*.db
+data/*.sqlite3
+data/*.db-journal
+
+# Shoot capture folders
+shoot_folders/01_Tether_Ingest/*
+shoot_folders/03_Ready_To_Deliver/*
+!shoot_folders/01_Tether_Ingest/.gitkeep
+!shoot_folders/03_Ready_To_Deliver/.gitkeep
+
+# Large Adobe SDK zip & extracted docs (keep repo lightweight)
+LrC_15.3_202604090947-8f3672ed.release_SDK.zip
+LrClassicSDK/
+
+# User credentials & secrets
+config.json
+
+# Logs
+*.log

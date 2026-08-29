@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Email Template Editor — {{ event_name }}</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        .editor-layout {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            height: calc(100vh - 120px);
+            padding: 20px;
+        }
+        .editor-pane {
+            display: flex;
+            flex-direction: column;
+            background: #1e293b;
+            border-radius: 8px;
+            padding: 15px;
+            border: 1px solid #334155;
+        }
+        .editor-textarea {
+            flex: 1;
+            background: #0f172a;
+            color: #f8fafc;
+            border: 1px solid #475569;
+            border-radius: 6px;
+            padding: 12px;
+            font-family: monospace;
+            font-size: 13px;
+            resize: none;
+            line-height: 1.5;
+        }
+        .preview-pane {
+            background: #ffffff;
+            border-radius: 8px;
+            overflow-y: auto;
+            border: 1px solid #cbd5e1;
+        }
+        .var-tags {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+        .var-tag {
+            background: #334155;
+            color: #38bdf8;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-family: monospace;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <header class="hud-header">
+        <div class="header-left">
+            <a href="/" class="btn btn-secondary">&larr; Back to HUD</a>
+            <h1 class="event-title" style="margin-left: 15px;">Email Notification Template</h1>
+        </div>
+        <div class="header-actions">
+            <button class="btn btn-primary" onclick="saveTemplate()">💾 Save Template</button>
+        </div>
+    </header>
+
+    <div class="editor-layout">
+        
+        <!-- Left: Code / HTML Editor -->
+        <div class="editor-pane">
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                <h3 style="margin: 0; color: #f8fafc; font-size: 16px;">Template HTML</h3>
+                <button class="btn btn-sm btn-secondary" onclick="updatePreview()">🔄 Refresh Preview</button>
+            </div>
+            
+            <div class="var-tags">
+                <span class="var-tag" onclick="insertVar('{{ first_name }}')">&#123;&#123; first_name &#125;&#125;</span>
+                <span class="var-tag" onclick="insertVar('{{ last_name }}')">&#123;&#123; last_name &#125;&#125;</span>
+                <span class="var-tag" onclick="insertVar('{{ organization }}')">&#123;&#123; organization &#125;&#125;</span>
+                <span class="var-tag" onclick="insertVar('{{ gallery_url }}')">&#123;&#123; gallery_url &#125;&#125;</span>
+                <span class="var-tag" onclick="insertVar('{{ event_name }}')">&#123;&#123; event_name &#125;&#125;</span>
+                <span class="var-tag" onclick="insertVar('{{ sender_name }}')">&#123;&#123; sender_name &#125;&#125;</span>
+            </div>
+
+            <textarea id="template-editor" class="editor-textarea">{{ template_content }}</textarea>
+        </div>
+
+        <!-- Right: Live Rendered Preview -->
+        <div class="preview-pane" id="preview-container">
+            <iframe id="preview-frame" style="width: 100%; height: 100%; border: none;"></iframe>
+        </div>
+
+    </div>
+
+    <div class="toast-container" id="toast-container"></div>
+
+    <script>
+        const initialHtml = {{ preview_html | tojson }};
+        const editor = document.getElementById("template-editor");
+        const iframe = document.getElementById("preview-frame");
+
+        function setIframeContent(html) {
+            const doc = iframe.contentDocument || iframe.contentWindow.document;
+            doc.open();
+            doc.write(html);
+            doc.close();
+        }
+
+        setIframeContent(initialHtml);
+
+        function insertVar(varName) {
+            const start = editor.selectionStart;
+            const end = editor.selectionEnd;
+            const text = editor.value;
+            editor.value = text.substring(0, start) + varName + text.substring(end);
+            editor.focus();
+            editor.selectionStart = editor.selectionEnd = start + varName.length;
+            updatePreview();
+        }
+
+        async function updatePreview() {
+            const content = editor.value;
+            try {
+                const resp = await fetch("/api/templates/preview", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({content: content})
+                });
+                const data = await resp.json();
+                setIframeContent(data.html);
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        async function saveTemplate() {
+            const content = editor.value;
+            try {
+                const resp = await fetch("/api/templates/save", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({content: content})
+                });
+                const data = await resp.json();
+                showToast("Template saved successfully!", "success");
+            } catch (e) {
+                showToast("Failed to save template", "error");
+            }
+        }
+
+        function showToast(msg, type="info") {
+            const c = document.getElementById("toast-container");
+            const t = document.createElement("div");
+            t.className = `toast toast-${type}`;
+            t.textContent = msg;
+            c.appendChild(t);
+            setTimeout(() => t.remove(), 3500);
+        }
+
+        // Live preview debounce
+        let timer;
+        editor.addEventListener("input", () => {
+            clearTimeout(timer);
+            timer = setTimeout(updatePreview, 600);
+        });
+    </script>
+</body>
+</html>

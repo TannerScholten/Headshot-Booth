@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your Professional Headshots</title>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f4f6f9; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #2d3748;">
+    <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f4f6f9; padding: 40px 10px;">
+        <tr>
+            <td align="center">
+                <table border="0" cellpadding="0" cellspacing="0" width="600" style="background-color: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.06); border: 1px solid #e2e8f0;">
+                    
+                    <!-- Header Banner -->
+                    <tr>
+                        <td align="center" style="background: linear-gradient(135deg, #1e293b 0%, #0f172a 100%); padding: 36px 30px; border-bottom: 3px solid #3b82f6;">
+                            <h1 style="margin: 0; color: #ffffff; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">{{ sender_name }}</h1>
+                            <p style="margin: 6px 0 0 0; color: #94a3b8; font-size: 14px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 600;">{{ event_name }}</p>
+                        </td>
+                    </tr>
+
+                    <!-- Body Content -->
+                    <tr>
+                        <td style="padding: 40px 35px 30px 35px;">
+                            <h2 style="margin: 0 0 16px 0; color: #0f172a; font-size: 22px; font-weight: 600;">Hi {{ first_name }},</h2>
+                            
+                            <p style="margin: 0 0 18px 0; font-size: 16px; line-height: 1.6; color: #475569;">
+                                It was great meeting you at the headshot station! Your professional portraits have been calibrated, color-graded, and uploaded to your private online gallery.
+                            </p>
+
+                            <!-- CTA Button Box -->
+                            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="margin: 32px 0;">
+                                <tr>
+                                    <td align="center">
+                                        <a href="{{ gallery_url }}" target="_blank" style="background-color: #2563eb; color: #ffffff; font-size: 16px; font-weight: 600; text-decoration: none; padding: 15px 36px; border-radius: 8px; display: inline-block; box-shadow: 0 4px 12px rgba(37,99,235,0.25);">
+                                            View & Download Your Headshots &rarr;
+                                        </a>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <!-- Instructions Box -->
+                            <table border="0" cellpadding="0" cellspacing="0" width="100%" style="background-color: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0; margin-bottom: 24px;">
+                                <tr>
+                                    <td style="padding: 20px;">
+                                        <h3 style="margin: 0 0 8px 0; font-size: 14px; text-transform: uppercase; letter-spacing: 0.5px; color: #1e293b;">💡 Download Options:</h3>
+                                        <ul style="margin: 0; padding-left: 20px; font-size: 14px; line-height: 1.6; color: #64748b;">
+                                            <li><strong>Original High-Resolution:</strong> Best for high-quality printing, press releases, or publications.</li>
+                                            <li><strong>Optimized Web-Size:</strong> Perfectly scaled for LinkedIn, company websites, and Slack profiles.</li>
+                                        </ul>
+                                    </td>
+                                </tr>
+                            </table>
+
+                            <p style="margin: 0 0 24px 0; font-size: 14px; line-height: 1.5; color: #64748b;">
+                                If you need any specific retouching or additional crops, feel free to reply directly to this email.
+                            </p>
+
+                            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 28px 0 20px 0;">
+
+                            <p style="margin: 0; font-size: 15px; color: #334155; line-height: 1.5;">
+                                Warm regards,<br>
+                                <strong style="color: #0f172a;">{{ sender_name }}</strong><br>
+                                <span style="font-size: 13px; color: #64748b;"><a href="https://www.tannereli.com" style="color: #2563eb; text-decoration: none;">www.tannereli.com</a></span>
+                            </p>
+                        </td>
+                    </tr>
+
+                    <!-- Footer -->
+                    <tr>
+                        <td align="center" style="background-color: #f8fafc; padding: 20px; border-top: 1px solid #e2e8f0; font-size: 12px; color: #94a3b8;">
+                            &copy; 2026 {{ sender_name }}. All rights reserved.
+                        </td>
+                    </tr>
+
+                </table>
+            </td>
+        </tr>
+    </table>
+</body>
+</html>
