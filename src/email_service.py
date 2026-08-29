@@ -97,8 +97,68 @@ class EmailService:
             server.quit()
             self._last_send_time = time.time()
             return True, f"Email sent successfully to {recipient_email}"
-        except Exception as e:
+        except smtplib.SMTPAuthenticationError:
+            return False, "Gmail authentication failed. Verify your App Password in config.json."
+        except smtplib.SMTPRecipientsRefused:
+            return False, f"Recipient address rejected by Gmail: {recipient_email}"
+        except (smtplib.SMTPException, OSError) as e:
             return False, f"SMTP Error sending to {recipient_email}: {str(e)}"
+
+    def send_batch_emails(self, attendees: list, custom_template: Optional[str] = None) -> Tuple[int, list]:
+        """
+        Sends emails in a batch using a single persistent SMTP connection to avoid TLS renegotiation.
+        """
+        gmail_cfg = config.gmail_config
+        sender_email = gmail_cfg.get("sender_email")
+        sender_name = gmail_cfg.get("sender_name", "Tanner Scholten Photography")
+        app_password = gmail_cfg.get("app_password", "").replace(" ", "")
+
+        if not attendees:
+            return 0, []
+
+        sent_count = 0
+        failures = []
+
+        try:
+            context = ssl.create_default_context()
+            server = smtplib.SMTP(gmail_cfg.get("smtp_server", "smtp.gmail.com"), int(gmail_cfg.get("smtp_port", 587)), timeout=20)
+            server.ehlo()
+            server.starttls(context=context)
+            server.ehlo()
+            server.login(sender_email, app_password)
+
+            for att in attendees:
+                recipient_email = att.get("email", "").strip()
+                if not recipient_email or "@" not in recipient_email:
+                    failures.append((att.get("id"), f"Invalid email: '{recipient_email}'"))
+                    continue
+
+                # Rate limit spacing
+                now = time.time()
+                elapsed = now - self._last_send_time
+                required_delay = config.email_rate_limit_seconds
+                if elapsed < required_delay:
+                    time.sleep(required_delay - elapsed)
+
+                try:
+                    subject, html_content = self.render_email(att, custom_template)
+                    msg = MIMEMultipart("alternative")
+                    msg["Subject"] = subject
+                    msg["From"] = f"{sender_name} <{sender_email}>"
+                    msg["To"] = recipient_email
+                    msg.attach(MIMEText(html_content, "html"))
+
+                    server.sendmail(sender_email, recipient_email, msg.as_string())
+                    self._last_send_time = time.time()
+                    sent_count += 1
+                except Exception as ex:
+                    failures.append((att.get("id"), str(ex)))
+
+            server.quit()
+        except Exception as e:
+            failures.append((None, f"Connection failure: {str(e)}"))
+
+        return sent_count, failures
 
 # Global instance
 email_service = EmailService()

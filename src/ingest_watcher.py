@@ -46,12 +46,33 @@ class IngestWatcher:
             time.sleep(1.5)
 
     def _is_file_ready(self, file_path: Path) -> bool:
-        """Debounce file lock on Windows."""
+        """
+        Multi-stage debounce for camera USB-C raw writes:
+        1. Check file size > 0.
+        2. Wait 500ms and ensure size is stable (unchanged).
+        3. Attempt non-blocking handle open.
+        """
         try:
+            if not file_path.exists():
+                return False
+            initial_size = file_path.stat().st_size
+            if initial_size == 0:
+                return False
+            
+            # Brief wait to ensure camera is not actively streaming bytes
+            time.sleep(0.5)
+            
+            if not file_path.exists():
+                return False
+            final_size = file_path.stat().st_size
+            if final_size != initial_size or final_size == 0:
+                return False
+
+            # Test non-blocking read
             with open(file_path, "rb") as f:
                 f.seek(0, 2)
             return True
-        except (IOError, PermissionError):
+        except (IOError, PermissionError, OSError):
             return False
 
     def _process_raw_capture(self, raw_file: Path) -> None:

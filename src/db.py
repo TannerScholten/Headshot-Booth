@@ -4,9 +4,12 @@ from typing import Optional, List, Dict, Any
 from src.config import config
 
 def get_connection() -> sqlite3.Connection:
-    conn = sqlite3.connect(str(config.database_path), timeout=10.0)
+    conn = sqlite3.connect(str(config.database_path), timeout=30.0)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA foreign_keys = ON")
+    conn.execute("PRAGMA journal_mode = WAL")
+    conn.execute("PRAGMA busy_timeout = 30000")
+    conn.execute("PRAGMA synchronous = NORMAL")
     return conn
 
 def init_db() -> None:

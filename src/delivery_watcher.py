@@ -118,11 +118,35 @@ class ReadyToDeliverWatcher:
             time.sleep(2)
 
     def _is_file_ready(self, file_path: Path) -> bool:
+        """
+        Ensures Lightroom has completely finished rendering the JPEG:
+        1. Check file size > 0.
+        2. Wait 500ms and ensure size is stable (unchanged).
+        3. Attempt non-blocking handle check.
+        """
         try:
+            if not file_path.exists():
+                return False
+            # Ignore temporary Lightroom export files (.tmp)
+            if file_path.suffix.lower() in [".tmp", ".crdownload", ".partial"]:
+                return False
+
+            initial_size = file_path.stat().st_size
+            if initial_size == 0:
+                return False
+
+            time.sleep(0.5)
+
+            if not file_path.exists():
+                return False
+            final_size = file_path.stat().st_size
+            if final_size != initial_size or final_size == 0:
+                return False
+
             with open(file_path, "ab") as f:
                 pass
             return True
-        except (IOError, PermissionError):
+        except (IOError, PermissionError, OSError):
             return False
 
 delivery_watcher = ReadyToDeliverWatcher()

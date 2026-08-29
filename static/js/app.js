@@ -23,7 +23,43 @@ document.addEventListener("DOMContentLoaded", () => {
     setInterval(pollStatus, 4000);
 });
 
-// --- Keyboard Shortcuts ---
+// --- Audio Cue (Web Audio API Synthesizer) ---
+function playChime() {
+    try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const now = audioCtx.currentTime;
+        
+        // High tone
+        const osc1 = audioCtx.createOscillator();
+        const gain1 = audioCtx.createGain();
+        osc1.type = "sine";
+        osc1.frequency.setValueAtTime(587.33, now); // D5
+        gain1.gain.setValueAtTime(0.15, now);
+        gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.35);
+        osc1.connect(gain1);
+        gain1.connect(audioCtx.destination);
+        osc1.start(now);
+        osc1.stop(now + 0.35);
+
+        // Harmonizing higher tone
+        const osc2 = audioCtx.createOscillator();
+        const gain2 = audioCtx.createGain();
+        osc2.type = "sine";
+        osc2.frequency.setValueAtTime(880.00, now + 0.08); // A5
+        gain2.gain.setValueAtTime(0.15, now + 0.08);
+        gain2.gain.exponentialRampToValueAtTime(0.001, now + 0.45);
+        osc2.connect(gain2);
+        gain2.connect(audioCtx.destination);
+        osc2.start(now + 0.08);
+        osc2.stop(now + 0.45);
+    } catch (e) {
+        // AudioContext may require initial user gesture
+    }
+}
+
+// --- Keyboard Shortcuts & Arrow Navigation ---
+let highlightedIndex = -1;
+
 function setupKeyboardShortcuts() {
     document.addEventListener("keydown", (e) => {
         // Alt+N -> Open Walk-In Modal
@@ -48,14 +84,47 @@ function setupKeyboardShortcuts() {
             } else if (searchInput.value) {
                 clearSearch();
             }
+            return;
         }
 
-        // Enter in search -> Select first result
+        const items = attendeeList.querySelectorAll(".attendee-item");
+        if (items.length === 0) return;
+
+        // ArrowDown -> Move down in search results
+        if (e.key === "ArrowDown") {
+            e.preventDefault();
+            highlightedIndex = Math.min(highlightedIndex + 1, items.length - 1);
+            updateHighlightedItem(items);
+            return;
+        }
+
+        // ArrowUp -> Move up in search results
+        if (e.key === "ArrowUp") {
+            e.preventDefault();
+            highlightedIndex = Math.max(highlightedIndex - 1, 0);
+            updateHighlightedItem(items);
+            return;
+        }
+
+        // Enter in search -> Select highlighted result or first item
         if (e.key === "Enter" && document.activeElement === searchInput) {
-            const firstItem = attendeeList.querySelector(".attendee-item");
-            if (firstItem) {
-                firstItem.click();
+            e.preventDefault();
+            if (highlightedIndex >= 0 && highlightedIndex < items.length) {
+                items[highlightedIndex].click();
+            } else if (items.length > 0) {
+                items[0].click();
             }
+        }
+    });
+}
+
+function updateHighlightedItem(items) {
+    items.forEach((item, idx) => {
+        if (idx === highlightedIndex) {
+            item.classList.add("highlighted");
+            item.scrollIntoView({ block: "nearest" });
+        } else {
+            item.classList.remove("highlighted");
         }
     });
 }
@@ -121,6 +190,7 @@ async function selectAttendee(id) {
             activeAttendeeId = id;
             renderActiveCard(data.active);
             fetchSearch(searchInput.value);
+            playChime();
             showToast(`Active: ${data.active.first_name} ${data.active.last_name}`, "info");
         }
     } catch (e) {
