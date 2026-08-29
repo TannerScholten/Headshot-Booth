@@ -63,6 +63,10 @@
             <h1 class="event-title" style="margin-left: 15px;">Email Notification Template</h1>
         </div>
         <div class="header-actions">
+            <div style="display: flex; gap: 8px; align-items: center;">
+                <input type="email" id="test-email-input" placeholder="your_email@gmail.com" style="background: #0f172a; border: 1px solid #475569; border-radius: 6px; padding: 6px 10px; color: #fff; font-size: 13px; width: 200px;">
+                <button class="btn btn-secondary" onclick="sendTestEmail()" title="Send a real test email via your Gmail account">📨 Send Test</button>
+            </div>
             <button class="btn btn-primary" onclick="saveTemplate()">💾 Save Template</button>
         </div>
     </header>
@@ -148,6 +152,27 @@
                 showToast("Template saved successfully!", "success");
             } catch (e) {
                 showToast("Failed to save template", "error");
+            }
+        }
+
+        async function sendTestEmail() {
+            const email = document.getElementById("test-email-input").value.trim();
+            if (!email || !email.includes("@")) {
+                showToast("Please enter a valid test email address", "error");
+                return;
+            }
+            showToast(`Sending test email to ${email}...`, "info");
+            const content = editor.value;
+            try {
+                const resp = await fetch("/api/templates/send-test", {
+                    method: "POST",
+                    headers: {"Content-Type": "application/json"},
+                    body: JSON.stringify({recipient_email: email, content: content})
+                });
+                const data = await resp.json();
+                showToast(data.message, data.status === "success" ? "success" : "error");
+            } catch (e) {
+                showToast("Network error sending test email", "error");
             }
         }
 

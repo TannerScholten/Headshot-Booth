@@ -35,6 +35,12 @@
                 <button class="btn btn-secondary" id="btn-toggle-chime" onclick="toggleChime()" title="Toggle audio chime on subject change">
                     <span id="chime-icon">🔔</span> <span id="chime-label">Chime: ON</span>
                 </button>
+                <button class="btn btn-secondary" id="btn-fullscreen" onclick="toggleFullscreen()" title="Toggle Fullscreen Mode (F11)">
+                    <span class="btn-icon">⛶</span> Fullscreen
+                </button>
+                <a href="/api/export-roster" class="btn btn-secondary" title="Download Attendee & Delivery Report as CSV">
+                    <span class="btn-icon">📥</span> Export CSV
+                </a>
                 <button class="btn btn-secondary" id="btn-sync-google" title="Fetch latest Google Form responses">
                     <span class="btn-icon">🔄</span> Sync Form
                 </button>
@@ -98,6 +104,13 @@
                     <button class="btn btn-primary" onclick="openWalkInModal()">
                         + Walk-In (Alt+N)
                     </button>
+                </div>
+
+                <!-- Filter Pills -->
+                <div class="filter-bar">
+                    <button class="filter-pill active" id="pill-all" onclick="setFilter('all')">All</button>
+                    <button class="filter-pill" id="pill-unshot" onclick="setFilter('unshot')">⏳ Waiting / Unshot</button>
+                    <button class="filter-pill" id="pill-delivered" onclick="setFilter('delivered')">✅ Delivered</button>
                 </div>
 
                 <div class="attendee-list" id="attendee-list">

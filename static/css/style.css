@@ -295,6 +295,38 @@ body {
     font-size: 14px;
 }
 
+/* Filter Bar */
+.filter-bar {
+    display: flex;
+    gap: 6px;
+    padding: 8px 12px 6px 12px;
+    background: var(--bg-surface);
+    border-bottom: 1px solid var(--border-color);
+}
+
+.filter-pill {
+    background: transparent;
+    border: 1px solid var(--border-color);
+    color: var(--text-muted);
+    padding: 3px 10px;
+    border-radius: 16px;
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.filter-pill:hover {
+    background: #334155;
+    color: var(--text-main);
+}
+
+.filter-pill.active {
+    background: var(--accent-blue);
+    color: #ffffff;
+    border-color: var(--accent-blue);
+}
+
 /* Attendee List */
 .attendee-list {
     flex: 1;

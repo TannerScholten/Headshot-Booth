@@ -156,8 +156,8 @@ async def api_new_session(attendee_id: int):
     return {"status": "success", "session_number": new_seq, "active": db.get_active_attendee()}
 
 @app.get("/api/search")
-async def api_search(q: str = ""):
-    results = db.search_attendees(q, limit=25)
+async def api_search(q: str = "", filter_type: str = "all"):
+    results = db.search_attendees(q, filter_type=filter_type, limit=35)
     return {"results": results}
 
 @app.post("/api/walkin")
@@ -336,3 +336,88 @@ async def api_preview_template(data: TemplateUpdateRequest):
     }
     subject, html, _ = email_service.render_email(active, data.content)
     return {"subject": subject, "html": html}
+
+class SendTestEmailRequest(BaseModel):
+    recipient_email: str
+    content: Optional[str] = None
+
+@app.post("/api/templates/send-test")
+async def api_send_test_email(data: SendTestEmailRequest):
+    if not data.recipient_email or "@" not in data.recipient_email:
+        raise HTTPException(status_code=400, detail="Invalid email address.")
+    
+    sample_attendee = {
+        "first_name": "Test",
+        "last_name": "Recipient",
+        "organization": "Conference Demo",
+        "title": "VIP Attendee",
+        "email": data.recipient_email.strip(),
+        "zenfolio_gallery_url": "https://www.tannereli.com/headshots2026"
+    }
+    
+    content = data.content or email_service.get_template_content()
+    success, msg = email_service.send_delivery_email(sample_attendee, template_content=content)
+    if success:
+        return {"status": "success", "message": f"Test email sent successfully to {data.recipient_email}!"}
+    else:
+        return {"status": "error", "message": f"Failed to send test email: {msg}"}
+
+# --- Attendee Roster CSV Export ---
+import io
+import csv
+from fastapi.responses import Response
+
+@app.get("/api/export-roster")
+async def api_export_roster():
+    """
+    Exports a clean CSV summary report of all attendees, keeper photos, and delivery statuses.
+    """
+    rows = db.get_all_attendees_export_data()
+    
+    output = io.StringIO()
+    writer = csv.writer(output)
+    
+    # Header
+    writer.writerow([
+        "Attendee ID",
+        "First Name",
+        "Last Name",
+        "Email",
+        "Phone",
+        "Organization",
+        "Title",
+        "Intake Source",
+        "Private Gallery URL",
+        "Total Sessions",
+        "Delivered Photos",
+        "Latest Email Status",
+        "Latest SMS Status",
+        "Registration Date"
+    ])
+    
+    for r in rows:
+        writer.writerow([
+            r.get("id"),
+            r.get("first_name"),
+            r.get("last_name"),
+            r.get("email"),
+            r.get("phone") or "",
+            r.get("organization") or "",
+            r.get("title") or "",
+            r.get("source") or "",
+            r.get("zenfolio_gallery_url") or "",
+            r.get("session_count") or 1,
+            r.get("total_photos") or 0,
+            r.get("latest_email_status") or "PENDING",
+            r.get("latest_sms_status") or "NOT_PROVIDED",
+            r.get("created_at") or ""
+        ])
+    
+    csv_data = output.getvalue()
+    filename = f"Headshot_Booth_Roster_Report_{config.event_name.replace(' ', '_')}.csv"
+    
+    return Response(
+        content=csv_data,
+        media_type="text/csv",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )

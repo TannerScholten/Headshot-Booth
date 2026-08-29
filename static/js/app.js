@@ -3,6 +3,7 @@ let activeAttendeeId = null;
 let searchDebounceTimer = null;
 let highlightedIndex = 0;
 let chimeEnabled = localStorage.getItem("chimeEnabled") !== "false";
+let currentFilter = "all";
 
 const searchInput = document.getElementById("search-input");
 const attendeeList = document.getElementById("attendee-list");
@@ -25,6 +26,28 @@ document.addEventListener("DOMContentLoaded", () => {
     // Live update loop every 4 seconds
     setInterval(pollStatus, 4000);
 });
+
+// --- Fullscreen Toggle ---
+function toggleFullscreen() {
+    if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => {
+            console.log("Fullscreen error:", err);
+        });
+    } else {
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        }
+    }
+}
+
+// --- Roster Filtering ---
+function setFilter(filterType) {
+    currentFilter = filterType;
+    document.querySelectorAll(".filter-pill").forEach(pill => pill.classList.remove("active"));
+    const activePill = document.getElementById(`pill-${filterType}`);
+    if (activePill) activePill.classList.add("active");
+    fetchSearch(searchInput.value);
+}
 
 // --- Audio Cue (Web Audio API Synthesizer) ---
 function toggleChime() {
@@ -167,7 +190,7 @@ function setupSearchInput() {
 
 async function fetchSearch(query) {
     try {
-        const resp = await fetch(`/api/search?q=${encodeURIComponent(query)}`);
+        const resp = await fetch(`/api/search?q=${encodeURIComponent(query)}&filter_type=${encodeURIComponent(currentFilter)}`);
         const data = await resp.json();
         renderAttendeeList(data.results);
     } catch (e) {

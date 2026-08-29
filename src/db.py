@@ -167,19 +167,44 @@ def get_or_create_attendee(
             cursor.execute("SELECT * FROM attendees WHERE id = ?", (attendee_id,))
             return dict(cursor.fetchone())
 
-def search_attendees(query: str = "", limit: int = 30) -> List[Dict[str, Any]]:
-    query = f"%{query.strip()}%"
+def search_attendees(query: str = "", filter_type: str = "all", limit: int = 40) -> List[Dict[str, Any]]:
+    query_str = f"%{query.strip()}%"
     with get_connection() as conn:
         cursor = conn.cursor()
-        cursor.execute("""
+        
+        where_clause = "(a.first_name LIKE ? OR a.last_name LIKE ? OR (a.first_name || ' ' || a.last_name) LIKE ? OR a.email LIKE ? OR a.organization LIKE ? OR CAST(a.id AS TEXT) LIKE ?)"
+        
+        if filter_type == "unshot":
+            where_clause += " AND (SELECT COUNT(*) FROM delivery_records WHERE attendee_id = a.id) = 0"
+        elif filter_type == "delivered":
+            where_clause += " AND (SELECT COUNT(*) FROM delivery_records WHERE attendee_id = a.id AND status = 'SENT') > 0"
+
+        sql = f"""
         SELECT a.*, 
                (SELECT COUNT(*) FROM delivery_records WHERE attendee_id = a.id) as photo_count,
                (SELECT COUNT(*) FROM sessions WHERE attendee_id = a.id) as session_count
         FROM attendees a
-        WHERE a.first_name LIKE ? OR a.last_name LIKE ? OR (a.first_name || ' ' || a.last_name) LIKE ? OR a.email LIKE ? OR a.organization LIKE ? OR CAST(a.id AS TEXT) LIKE ?
+        WHERE {where_clause}
         ORDER BY a.updated_at DESC
         LIMIT ?
-        """, (query, query, query, query, query, query, limit))
+        """
+        cursor.execute(sql, (query_str, query_str, query_str, query_str, query_str, query_str, limit))
+        return [dict(r) for r in cursor.fetchall()]
+
+def get_all_attendees_export_data() -> List[Dict[str, Any]]:
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("""
+        SELECT a.id, a.first_name, a.last_name, a.email, a.phone, a.organization, a.title, a.source,
+               a.zenfolio_gallery_url,
+               (SELECT COUNT(*) FROM sessions WHERE attendee_id = a.id) as session_count,
+               (SELECT COUNT(*) FROM delivery_records WHERE attendee_id = a.id) as total_photos,
+               (SELECT status FROM delivery_records WHERE attendee_id = a.id ORDER BY id DESC LIMIT 1) as latest_email_status,
+               (SELECT sms_status FROM delivery_records WHERE attendee_id = a.id ORDER BY id DESC LIMIT 1) as latest_sms_status,
+               a.created_at
+        FROM attendees a
+        ORDER BY a.id ASC
+        """)
         return [dict(r) for r in cursor.fetchall()]
 
 def get_attendee_by_id(attendee_id: int) -> Optional[Dict[str, Any]]:
