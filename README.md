@@ -11,6 +11,7 @@ An automated, operator-friendly workflow system for high-volume professional con
 - **Zenfolio Private Gallery Automation:** Automatically creates attendee galleries and uploads keeper photos via Zenfolio Classic API.
 - **Rate-Limited Gmail Dispatcher:** Dispatches personalized HTML delivery emails with a 1.8-second spacing delay to protect email sender reputation.
 - **Multi-Session Handling:** Handles returning attendees / outfit changes without overwriting past captures.
+- **Optional Zero-Cost SMS Delivery:** Automated SMS gallery delivery via Google Messages Web (Playwright) for attendees who provide mobile numbers (100% fail-soft & decoupled).
 - **Visual Email Template Editor:** In-app template customizer with live mobile/desktop previews at `/templates-editor`.
 
 ---
@@ -22,13 +23,19 @@ An automated, operator-friendly workflow system for high-volume professional con
    ```bash
    pip install -r requirements.txt
    ```
-3. Launch the local booth HUD:
+3. *(Optional)* Set up Zero-Cost SMS Delivery:
+   ```bash
+   playwright install chromium
+   python -m src.sms_service --setup
+   ```
+   Scan the QR code with your Android Google Messages app, then set `"sms": { "enabled": true }` in `config.json`.
+4. Launch the local booth HUD:
    - Double-click `run_booth.bat` or run:
      ```bash
      python -m uvicorn src.app:app --host 0.0.0.0 --port 8000
      ```
    - Open [http://localhost:8000](http://localhost:8000) in your browser.
-4. Install the Lightroom Plugin:
+5. Install the Lightroom Plugin:
    - In Lightroom Classic, go to **File > Plug-in Manager > Add**, and select the `HeadshotBooth.lrplugin` folder.
 
 ---

@@ -12,6 +12,23 @@ def get_connection() -> sqlite3.Connection:
     conn.execute("PRAGMA synchronous = NORMAL")
     return conn
 
+import re
+
+def normalize_phone_number(raw_phone: Optional[str]) -> str:
+    """
+    Normalizes phone input into standard international format (+1XXXXXXXXXX for US).
+    """
+    if not raw_phone:
+        return ""
+    digits = re.sub(r'\D', '', str(raw_phone))
+    if len(digits) == 10:
+        return f"+1{digits}"
+    elif len(digits) == 11 and digits.startswith("1"):
+        return f"+{digits}"
+    elif digits:
+        return f"+{digits}" if not raw_phone.strip().startswith("+") else raw_phone.strip()
+    return ""
+
 def init_db() -> None:
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -68,10 +85,23 @@ def init_db() -> None:
             retry_count INTEGER DEFAULT 0,
             uploaded_at TIMESTAMP,
             delivered_at TIMESTAMP,
+            sms_status TEXT DEFAULT 'NOT_PROVIDED', -- NOT_PROVIDED, QUEUED, SENT, FAILED, DISABLED
+            sms_delivered_at TIMESTAMP,
+            sms_error_message TEXT,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (attendee_id) REFERENCES attendees(id) ON DELETE CASCADE
         )
         """)
+
+        # Migration helper: ensure SMS columns exist if upgrading existing db
+        cursor.execute("PRAGMA table_info(delivery_records)")
+        existing_cols = [r["name"] for r in cursor.fetchall()]
+        if "sms_status" not in existing_cols:
+            cursor.execute("ALTER TABLE delivery_records ADD COLUMN sms_status TEXT DEFAULT 'NOT_PROVIDED'")
+        if "sms_delivered_at" not in existing_cols:
+            cursor.execute("ALTER TABLE delivery_records ADD COLUMN sms_delivered_at TIMESTAMP")
+        if "sms_error_message" not in existing_cols:
+            cursor.execute("ALTER TABLE delivery_records ADD COLUMN sms_error_message TEXT")
         
         # Table: system_state
         cursor.execute("""
@@ -103,7 +133,7 @@ def get_or_create_attendee(
     email = email.strip().lower()
     organization = organization.strip()
     title = title.strip()
-    phone = phone.strip()
+    phone = normalize_phone_number(phone)
 
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -262,11 +292,35 @@ def update_delivery_status(
             cursor.execute("UPDATE delivery_records SET status = ? WHERE id = ?", (status, delivery_id))
         conn.commit()
 
+def update_delivery_sms_status(
+    delivery_id: int, 
+    sms_status: str, 
+    error_message: Optional[str] = None
+) -> None:
+    with get_connection() as conn:
+        cursor = conn.cursor()
+        now = datetime.utcnow().isoformat()
+        if sms_status == 'SENT':
+            cursor.execute("""
+            UPDATE delivery_records 
+            SET sms_status = ?, sms_delivered_at = ?, sms_error_message = NULL
+            WHERE id = ?
+            """, (sms_status, now, delivery_id))
+        elif sms_status == 'FAILED':
+            cursor.execute("""
+            UPDATE delivery_records 
+            SET sms_status = ?, sms_error_message = ?
+            WHERE id = ?
+            """, (sms_status, error_message, delivery_id))
+        else:
+            cursor.execute("UPDATE delivery_records SET sms_status = ? WHERE id = ?", (sms_status, delivery_id))
+        conn.commit()
+
 def get_pending_deliveries() -> List[Dict[str, Any]]:
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-        SELECT d.*, a.first_name, a.last_name, a.email, a.organization, a.zenfolio_gallery_url, a.zenfolio_upload_url
+        SELECT d.*, a.first_name, a.last_name, a.email, a.phone, a.organization, a.zenfolio_gallery_url, a.zenfolio_upload_url
         FROM delivery_records d
         JOIN attendees a ON d.attendee_id = a.id
         WHERE d.status IN ('QUEUED', 'UPLOADED', 'FAILED')
@@ -278,7 +332,7 @@ def get_recent_deliveries(limit: int = 50) -> List[Dict[str, Any]]:
     with get_connection() as conn:
         cursor = conn.cursor()
         cursor.execute("""
-        SELECT d.*, a.first_name, a.last_name, a.email, a.organization, a.zenfolio_gallery_url
+        SELECT d.*, a.first_name, a.last_name, a.email, a.phone, a.organization, a.zenfolio_gallery_url
         FROM delivery_records d
         JOIN attendees a ON d.attendee_id = a.id
         ORDER BY d.created_at DESC
@@ -300,6 +354,9 @@ def get_stats() -> Dict[str, Any]:
         
         cursor.execute("SELECT COUNT(*) as count FROM delivery_records WHERE status = 'FAILED'")
         failed_deliveries = cursor.fetchone()["count"]
+
+        cursor.execute("SELECT COUNT(*) as count FROM delivery_records WHERE sms_status = 'SENT'")
+        sent_sms = cursor.fetchone()["count"]
         
         cursor.execute("SELECT value FROM system_state WHERE key = 'last_google_sync'")
         last_sync = cursor.fetchone()["value"]
@@ -307,6 +364,7 @@ def get_stats() -> Dict[str, Any]:
         return {
             "total_attendees": total_attendees,
             "sent_deliveries": sent_deliveries,
+            "sent_sms": sent_sms,
             "pending_deliveries": pending_deliveries,
             "failed_deliveries": failed_deliveries,
             "last_google_sync": last_sync

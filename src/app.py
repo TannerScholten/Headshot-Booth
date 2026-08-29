@@ -16,6 +16,7 @@ from src.google_forms_sync import forms_sync
 from src.delivery_watcher import process_exported_photo, delivery_watcher
 from src.ingest_watcher import ingest_watcher
 from src.email_service import email_service
+from src.sms_service import sms_service
 
 from contextlib import asynccontextmanager
 
@@ -43,7 +44,8 @@ async def lifespan(app: FastAPI):
     forms_sync.start_background_poller()
     delivery_watcher.start()
     ingest_watcher.start()
-    print("[System] Background workers and Windows USB stay-awake active.")
+    sms_service.start_worker()
+    print("[System] Background workers, SMS dispatcher, and Windows USB stay-awake active.")
     
     yield
     
@@ -51,6 +53,7 @@ async def lifespan(app: FastAPI):
     forms_sync.stop_background_poller()
     delivery_watcher.stop()
     ingest_watcher.stop()
+    sms_service.stop_worker()
     set_windows_power_stay_awake(False)
     
     # Cleanly checkpoint SQLite WAL log before exit
@@ -88,7 +91,8 @@ async def index_hud(request: Request):
             "active_attendee": active,
             "stats": stats,
             "recent_attendees": recent_attendees,
-            "auto_send_emails": config.auto_send_emails
+            "auto_send_emails": config.auto_send_emails,
+            "sms_enabled": config.sms_enabled
         }
     )
 

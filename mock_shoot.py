@@ -67,33 +67,34 @@ def run_comprehensive_simulation():
     db.init_db()
     print(f"  + Database active at: {config.database_path}")
 
-    # 2. Intake Simulation (10 Attendees)
+    # 2. Intake Simulation (10 Attendees with Phones)
     print("\n[Stage 2] Simulating Attendee Intake (10 Sample Registrations)...")
     sample_attendees_data = [
-        ("Sarah", "Connor", "sarah.connor@cyberdyne.org", "Cyberdyne Systems", "VP Security"),
-        ("Marcus", "Aurelius", "marcus@rome.gov", "Roman Empire", "Emperor"),
-        ("Elena", "Rostova", "elena.rostova@techcorp.io", "TechCorp", "Lead Architect"),
-        ("David", "Kowalski", "dkowalski@quantum.com", "Quantum Dynamics", "Principal Engineer"),
-        ("Maya", "Lin", "maya.lin@designstudio.org", "Lin Architecture", "Principal Founder"),
-        ("James", "Holden", "holden@roci.space", "Rocinante Logistics", "Captain"),
-        ("Naomi", "Nagata", "naomi@belters.org", "Outer Planets Alliance", "Chief Engineer"),
-        ("Amos", "Burton", "amos@baltimore.net", "Burton Operations", "Mechanic"),
-        ("Chrisjen", "Avasarala", "avasarala@un.gov", "United Nations", "Secretary-General"),
-        ("Alex", "Kamal", "alex.kamal@mcrn.mil", "Martian Congressional Navy", "Pilot")
+        ("Sarah", "Connor", "sarah.connor@cyberdyne.org", "Cyberdyne Systems", "VP Security", "(555) 019-2834"),
+        ("Marcus", "Aurelius", "marcus@rome.gov", "Roman Empire", "Emperor", "555-018-9921"),
+        ("Elena", "Rostova", "elena.rostova@techcorp.io", "TechCorp", "Lead Architect", "+15550174432"),
+        ("David", "Kowalski", "dkowalski@quantum.com", "Quantum Dynamics", "Principal Engineer", "5550162299"),
+        ("Maya", "Lin", "maya.lin@designstudio.org", "Lin Architecture", "Principal Founder", ""),
+        ("James", "Holden", "holden@roci.space", "Rocinante Logistics", "Captain", "555-014-8833"),
+        ("Naomi", "Nagata", "naomi@belters.org", "Outer Planets Alliance", "Chief Engineer", ""),
+        ("Amos", "Burton", "amos@baltimore.net", "Burton Operations", "Mechanic", "555-012-7711"),
+        ("Chrisjen", "Avasarala", "avasarala@un.gov", "United Nations", "Secretary-General", "+15550119900"),
+        ("Alex", "Kamal", "alex.kamal@mcrn.mil", "Martian Congressional Navy", "Pilot", "")
     ]
 
     registered_attendees = []
-    for first, last, email, org, title in sample_attendees_data:
+    for first, last, email, org, title, phone in sample_attendees_data:
         att = db.get_or_create_attendee(
             first_name=first,
             last_name=last,
             email=email,
             organization=org,
             title=title,
+            phone=phone,
             source="simulation"
         )
         registered_attendees.append(att)
-        print(f"  + Ingested #{att['id']}: {att['first_name']} {att['last_name']} ({att['organization']})")
+        print(f"  + Ingested #{att['id']}: {att['first_name']} {att['last_name']} ({att['organization']}) [Phone: {att['phone'] or 'N/A'}]")
 
     print(f"  --> Total Registered Attendees in DB: {len(registered_attendees)}")
 

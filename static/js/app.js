@@ -401,16 +401,28 @@ function renderQueueList(deliveries) {
     }
 
     queueList.innerHTML = deliveries.map(d => {
-        let badgeClass = "badge-info";
-        if (d.status === "SENT") badgeClass = "badge-success";
-        if (d.status === "FAILED") badgeClass = "badge-danger";
-        if (d.status === "HELD" || d.status === "QUEUED") badgeClass = "badge-warning";
+        let emailBadgeClass = "badge-info";
+        if (d.status === "SENT") emailBadgeClass = "badge-success";
+        if (d.status === "FAILED") emailBadgeClass = "badge-danger";
+        if (d.status === "HELD" || d.status === "QUEUED") emailBadgeClass = "badge-warning";
+
+        let smsBadge = "";
+        if (d.sms_status && d.sms_status !== "DISABLED" && d.sms_status !== "NOT_PROVIDED") {
+            let smsBadgeClass = "badge-info";
+            if (d.sms_status === "SENT") smsBadgeClass = "badge-success";
+            if (d.sms_status === "FAILED") smsBadgeClass = "badge-danger";
+            if (d.sms_status === "QUEUED") smsBadgeClass = "badge-warning";
+            smsBadge = `<span class="badge ${smsBadgeClass}" title="SMS Delivery Status">💬 SMS: ${d.sms_status}</span>`;
+        }
 
         return `
             <div class="queue-item">
                 <div class="queue-header">
                     <span>${escapeHtml(d.first_name)} ${escapeHtml(d.last_name)}</span>
-                    <span class="badge ${badgeClass}">${d.status}</span>
+                    <div style="display: flex; gap: 4px; align-items: center;">
+                        <span class="badge ${emailBadgeClass}" title="Email Status">✉️ ${d.status}</span>
+                        ${smsBadge}
+                    </div>
                 </div>
                 <div class="queue-meta">
                     <span>${escapeHtml(d.filename)}</span>

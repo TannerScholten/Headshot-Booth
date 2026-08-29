@@ -52,6 +52,23 @@ class Config:
         return self.data.get("zenfolio", {})
 
     @property
+    def sms_config(self) -> Dict[str, Any]:
+        return self.data.get("sms", {})
+
+    @property
+    def sms_enabled(self) -> bool:
+        return bool(self.sms_config.get("enabled", False))
+
+    @property
+    def sms_rate_limit_seconds(self) -> float:
+        return float(self.sms_config.get("rate_limit_seconds", 6.0))
+
+    @property
+    def browser_profile_dir(self) -> Path:
+        rel = self.sms_config.get("browser_profile_dir", "data/browser_profile")
+        return PROJECT_ROOT / rel
+
+    @property
     def database_path(self) -> Path:
         rel = self.data.get("paths", {}).get("database_file", "data/booth.db")
         return PROJECT_ROOT / rel
@@ -70,6 +87,7 @@ class Config:
         self.database_path.parent.mkdir(parents=True, exist_ok=True)
         self.tether_ingest_dir.mkdir(parents=True, exist_ok=True)
         self.ready_to_deliver_dir.mkdir(parents=True, exist_ok=True)
+        self.browser_profile_dir.mkdir(parents=True, exist_ok=True)
 
 # Singleton instance
 config = Config()

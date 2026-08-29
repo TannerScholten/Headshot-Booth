@@ -8,6 +8,7 @@ from src.config import config
 from src import db
 from src.zenfolio_client import zenfolio
 from src.email_service import email_service
+from src.sms_service import sms_service
 
 def process_exported_photo(
     attendee_id: int, 
@@ -20,6 +21,7 @@ def process_exported_photo(
     2. Creates/resolves Zenfolio private gallery.
     3. Uploads image to Zenfolio.
     4. Dispatches personalized Gmail notification if auto_send is enabled.
+    5. Asynchronously queues optional zero-cost SMS notification via Google Messages.
     """
     filename = filename or file_path.name
     attendee = db.get_attendee_by_id(attendee_id)
@@ -41,17 +43,28 @@ def process_exported_photo(
         db.update_delivery_status(delivery_id, "UPLOADED", zenfolio_photo_id=photo_id)
 
         # 4. Email Dispatch
+        email_sent = False
         if config.auto_send_emails:
             success, msg = email_service.send_delivery_email(attendee)
             if success:
                 db.update_delivery_status(delivery_id, "SENT")
-                return True, f"Successfully uploaded and delivered to {attendee['email']} ({gallery_url})"
+                email_sent = True
             else:
                 db.update_delivery_status(delivery_id, "FAILED", error_message=msg)
-                return False, f"Uploaded to Zenfolio, but email failed: {msg}"
         else:
             db.update_delivery_status(delivery_id, "HELD")
+
+        # 5. Optional SMS Dispatch (Graceful Degradation: Asynchronous & Decoupled)
+        phone = attendee.get("phone", "")
+        full_name = f"{attendee.get('first_name', '')} {attendee.get('last_name', '')}".strip()
+        sms_service.queue_sms(delivery_id, phone, full_name, gallery_url)
+
+        if email_sent:
+            return True, f"Successfully uploaded and delivered to {attendee['email']} ({gallery_url})"
+        elif not config.auto_send_emails:
             return True, f"Uploaded to Zenfolio and queued for batch send ({gallery_url})"
+        else:
+            return False, f"Uploaded to Zenfolio, but email failed: {msg}"
 
     except Exception as e:
         error_msg = str(e)
