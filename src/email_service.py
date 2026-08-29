@@ -37,34 +37,64 @@ class EmailService:
         with open(DEFAULT_TEMPLATE_PATH, "w", encoding="utf-8") as f:
             f.write(content)
 
-    def render_email(self, attendee: Dict[str, Any], custom_template: Optional[str] = None) -> Tuple[str, str]:
+    def render_email(self, attendee: Dict[str, Any], custom_template: Optional[str] = None) -> Tuple[str, str, str]:
         """
-        Returns (subject, html_body)
+        Returns (subject, html_body, plain_text_body)
+        Applies html.escape() to all dynamic variables and handles None/empty defaults gracefully.
         """
+        import html
+
+        first_name = (attendee.get("first_name") or "").strip() or "there"
+        last_name = (attendee.get("last_name") or "").strip()
+        org = (attendee.get("organization") or "").strip()
+        title = (attendee.get("title") or "").strip()
+        gallery_url = attendee.get("zenfolio_gallery_url") or "https://www.tannereli.com/headshots2026"
+        event_name = config.event_name or "Conference Headshots"
+        sender_name = config.gmail_config.get("sender_name", "Tanner Scholten Photography")
+
         template_str = custom_template or self.get_template_content()
         jinja_tpl = Template(template_str)
         
         ctx = {
-            "first_name": attendee.get("first_name", "there"),
-            "last_name": attendee.get("last_name", ""),
-            "full_name": f"{attendee.get('first_name', '')} {attendee.get('last_name', '')}".strip(),
-            "organization": attendee.get("organization", ""),
-            "title": attendee.get("title", ""),
-            "gallery_url": attendee.get("zenfolio_gallery_url", "https://www.tannereli.com/headshots2026"),
-            "event_name": config.event_name,
-            "sender_name": config.gmail_config.get("sender_name", "Tanner Scholten Photography")
+            "first_name": html.escape(first_name),
+            "last_name": html.escape(last_name),
+            "full_name": html.escape(f"{first_name} {last_name}".strip()),
+            "organization": html.escape(org),
+            "title": html.escape(title),
+            "gallery_url": gallery_url, # URL preserved for href
+            "event_name": html.escape(event_name),
+            "sender_name": html.escape(sender_name)
         }
         
         html_body = jinja_tpl.render(ctx)
-        subject = f"Your Professional Headshots from {config.event_name}"
-        return subject, html_body
+        subject = f"Your Professional Headshots from {event_name}"
+
+        # Clean plain-text fallback
+        plain_text = f"""Hi {first_name},
+
+Thank you for stopping by the headshot booth at {event_name}!
+
+Your professional portraits have been calibrated and uploaded to your private online gallery.
+
+View and download your headshots here:
+{gallery_url}
+
+Download Options:
+- Original High-Resolution: Best for printing or press releases.
+- Optimized Web-Size: Perfectly scaled for LinkedIn, websites, and profile pictures.
+
+Best regards,
+{sender_name}
+www.tannereli.com
+"""
+        return subject, html_body, plain_text
 
     def send_delivery_email(self, attendee: Dict[str, Any], custom_template: Optional[str] = None) -> Tuple[bool, str]:
         gmail_cfg = config.gmail_config
         sender_email = gmail_cfg.get("sender_email")
         sender_name = gmail_cfg.get("sender_name", "Tanner Scholten Photography")
         app_password = gmail_cfg.get("app_password", "").replace(" ", "")
-        recipient_email = attendee.get("email", "").strip()
+        recipient_email = (attendee.get("email") or "").strip()
 
         if not sender_email or not app_password:
             return False, "Gmail credentials not configured."
@@ -78,13 +108,14 @@ class EmailService:
         if elapsed < required_delay:
             time.sleep(required_delay - elapsed)
 
-        subject, html_content = self.render_email(attendee, custom_template)
+        subject, html_content, plain_text = self.render_email(attendee, custom_template)
 
         msg = MIMEMultipart("alternative")
         msg["Subject"] = subject
         msg["From"] = f"{sender_name} <{sender_email}>"
         msg["To"] = recipient_email
-        msg.attach(MIMEText(html_content, "html"))
+        msg.attach(MIMEText(plain_text, "plain", "utf-8"))
+        msg.attach(MIMEText(html_content, "html", "utf-8"))
 
         try:
             context = ssl.create_default_context()
@@ -128,7 +159,7 @@ class EmailService:
             server.login(sender_email, app_password)
 
             for att in attendees:
-                recipient_email = att.get("email", "").strip()
+                recipient_email = (att.get("email") or "").strip()
                 if not recipient_email or "@" not in recipient_email:
                     failures.append((att.get("id"), f"Invalid email: '{recipient_email}'"))
                     continue
@@ -141,12 +172,13 @@ class EmailService:
                     time.sleep(required_delay - elapsed)
 
                 try:
-                    subject, html_content = self.render_email(att, custom_template)
+                    subject, html_content, plain_text = self.render_email(att, custom_template)
                     msg = MIMEMultipart("alternative")
                     msg["Subject"] = subject
                     msg["From"] = f"{sender_name} <{sender_email}>"
                     msg["To"] = recipient_email
-                    msg.attach(MIMEText(html_content, "html"))
+                    msg.attach(MIMEText(plain_text, "plain", "utf-8"))
+                    msg.attach(MIMEText(html_content, "html", "utf-8"))
 
                     server.sendmail(sender_email, recipient_email, msg.as_string())
                     self._last_send_time = time.time()

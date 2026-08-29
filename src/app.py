@@ -7,10 +7,14 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
+import sys
+import ctypes
+
 from src.config import config, PROJECT_ROOT
 from src import db
 from src.google_forms_sync import forms_sync
 from src.delivery_watcher import process_exported_photo, delivery_watcher
+from src.ingest_watcher import ingest_watcher
 from src.email_service import email_service
 
 app = FastAPI(title="Headshot Booth & Delivery System", version="1.0.0")
@@ -24,17 +28,47 @@ templates_dir.mkdir(parents=True, exist_ok=True)
 app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
 templates = Jinja2Templates(directory=str(templates_dir))
 
+# Windows Power Management flags
+ES_CONTINUOUS = 0x80000000
+ES_SYSTEM_REQUIRED = 0x00000001
+ES_AWAYMODE_REQUIRED = 0x00000040
+
+def set_windows_power_stay_awake(enable: bool = True):
+    """Prevents Windows laptop from sleeping or suspending USB tether during booth downtime."""
+    if sys.platform == "win32":
+        try:
+            if enable:
+                ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS | ES_SYSTEM_REQUIRED | ES_AWAYMODE_REQUIRED)
+            else:
+                ctypes.windll.kernel32.SetThreadExecutionState(ES_CONTINUOUS)
+        except Exception as e:
+            print(f"[PowerManagement] Notice: {e}")
+
 # Lifecycle: start background workers on startup
 @app.on_event("startup")
 def on_startup():
     db.init_db()
+    set_windows_power_stay_awake(True)
     forms_sync.start_background_poller()
     delivery_watcher.start()
+    ingest_watcher.start()
+    print("[System] Background workers and Windows USB stay-awake active.")
 
 @app.on_event("shutdown")
 def on_shutdown():
     forms_sync.stop_background_poller()
     delivery_watcher.stop()
+    ingest_watcher.stop()
+    set_windows_power_stay_awake(False)
+    
+    # Cleanly checkpoint SQLite WAL log before exit
+    try:
+        with db.get_connection() as conn:
+            conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+            conn.commit()
+    except Exception as e:
+        print(f"[Shutdown] WAL Checkpoint error: {e}")
+    print("[System] Clean shutdown completed.")
 
 # --- Web UI Routes ---
 
@@ -66,7 +100,7 @@ async def template_editor(request: Request):
         "email": "jane.smith@example.com",
         "zenfolio_gallery_url": "https://www.tannereli.com/p829497399"
     }
-    _, preview_html = email_service.render_email(active, content)
+    _, preview_html, _ = email_service.render_email(active, content)
     return templates.TemplateResponse(
         request=request,
         name="template_editor.html",
@@ -261,5 +295,5 @@ async def api_preview_template(data: TemplateUpdateRequest):
         "email": "jane.smith@example.com",
         "zenfolio_gallery_url": "https://www.tannereli.com/p829497399"
     }
-    subject, html = email_service.render_email(active, data.content)
+    subject, html, _ = email_service.render_email(active, data.content)
     return {"subject": subject, "html": html}

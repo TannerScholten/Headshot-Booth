@@ -12,21 +12,25 @@ class IngestWatcher:
     """
     Watches 01_Tether_Ingest folder for new raw captures (.cr3).
     When file transfer completes, generates matching XMP sidecar with active attendee metadata.
+    Leaves original raw filename intact to prevent file-locking conflicts with Lightroom Classic.
     """
     def __init__(self):
         self._running = False
         self._thread: Optional[threading.Thread] = None
+        self._stop_event = threading.Event()
         self._processed: Set[str] = set()
 
     def start(self) -> None:
         if self._running:
             return
         self._running = True
+        self._stop_event.clear()
         self._thread = threading.Thread(target=self._run_loop, daemon=True)
         self._thread.start()
 
     def stop(self) -> None:
         self._running = False
+        self._stop_event.set()
 
     def _run_loop(self) -> None:
         watch_dir = config.tether_ingest_dir
@@ -43,7 +47,8 @@ class IngestWatcher:
             except Exception as e:
                 print(f"[IngestWatcher] Error: {e}")
 
-            time.sleep(1.5)
+            if self._stop_event.wait(timeout=1.5):
+                break
 
     def _is_file_ready(self, file_path: Path) -> bool:
         """

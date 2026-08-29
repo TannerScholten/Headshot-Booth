@@ -78,17 +78,20 @@ class ReadyToDeliverWatcher:
     def __init__(self):
         self._running = False
         self._thread: Optional[threading.Thread] = None
+        self._stop_event = threading.Event()
         self._processed_files = set()
 
     def start(self) -> None:
         if self._running:
             return
         self._running = True
+        self._stop_event.clear()
         self._thread = threading.Thread(target=self._watch_loop, daemon=True)
         self._thread.start()
 
     def stop(self) -> None:
         self._running = False
+        self._stop_event.set()
 
     def _watch_loop(self) -> None:
         watch_dir = config.ready_to_deliver_dir
@@ -115,7 +118,8 @@ class ReadyToDeliverWatcher:
             except Exception as e:
                 print(f"[ReadyToDeliverWatcher] Error: {e}")
 
-            time.sleep(2)
+            if self._stop_event.wait(timeout=2.0):
+                break
 
     def _is_file_ready(self, file_path: Path) -> bool:
         """

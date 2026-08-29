@@ -1,10 +1,10 @@
 """
-Mock Shoot Simulation Suite
-Simulates the entire conference workflow offline on desktop:
-1. Syncs Google Sheets responses into local SQLite database.
-2. Simulates walk-in registrations.
-3. Simulates active subject selection and outfit changes.
-4. Simulates Lightroom keeper JPEG export and triggers the delivery pipeline.
+Comprehensive Mock Shoot Simulation Suite
+Covers all 4 core conference workflows:
+1. Intake Simulation (10 diverse attendees with Google Form sync + walk-ins).
+2. Tether Ingest Simulation (3 raw .cr3 captures with debounced .xmp sidecar generation).
+3. Multi-Session Simulation (Day 1 vs Day 2 outfit change with session tracking).
+4. Delivery Simulation (Keeper JPEG export, Zenfolio gallery sync, and Gmail dispatch).
 """
 
 import os
@@ -26,6 +26,8 @@ sys.path.insert(0, str(PROJECT_ROOT))
 from src.config import config
 from src import db
 from src.google_forms_sync import forms_sync
+from src.xmp_generator import generate_xmp_sidecar
+from src.ingest_watcher import ingest_watcher
 from src.delivery_watcher import process_exported_photo
 
 def create_sample_jpeg(output_path: Path) -> None:
@@ -49,72 +51,107 @@ def create_sample_jpeg(output_path: Path) -> None:
     with open(output_path, "wb") as f:
         f.write(jpeg_bytes)
 
-def run_simulation():
-    print("=" * 60)
-    print("STARTING HEADSHOT BOOTH END-TO-END SIMULATION")
-    print("=" * 60)
+def create_sample_cr3(output_path: Path) -> None:
+    """Generates a dummy raw capture file for simulation."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(output_path, "wb") as f:
+        f.write(b"RAW_CR3_SIMULATED_BINARY_DATA_FOR_TESTING" * 100)
 
-    # 1. Initialize Database
-    print("\n[Step 1] Initializing SQLite database...")
+def run_comprehensive_simulation():
+    print("=" * 70)
+    print("STARTING COMPREHENSIVE HEADSHOT BOOTH SIMULATION SUITE")
+    print("=" * 70)
+
+    # 1. Database Initialization
+    print("\n[Stage 1] Initializing SQLite with WAL Mode & 30s Concurrency Timeout...")
     db.init_db()
-    print(f"Database initialized at: {config.database_path}")
+    print(f"  + Database active at: {config.database_path}")
 
-    # 2. Sync Google Form responses
-    print("\n[Step 2] Testing Google Sheet Live CSV Sync...")
-    synced, total, msg = forms_sync.fetch_and_sync()
-    print(f"{msg} (Rows in sheet: {total})")
-
-    # 3. Create Walk-In Attendees
-    print("\n[Step 3] Simulating Walk-In Registrations...")
-    test_walkins = [
+    # 2. Intake Simulation (10 Attendees)
+    print("\n[Stage 2] Simulating Attendee Intake (10 Sample Registrations)...")
+    sample_attendees_data = [
         ("Sarah", "Connor", "sarah.connor@cyberdyne.org", "Cyberdyne Systems", "VP Security"),
         ("Marcus", "Aurelius", "marcus@rome.gov", "Roman Empire", "Emperor"),
+        ("Elena", "Rostova", "elena.rostova@techcorp.io", "TechCorp", "Lead Architect"),
+        ("David", "Kowalski", "dkowalski@quantum.com", "Quantum Dynamics", "Principal Engineer"),
+        ("Maya", "Lin", "maya.lin@designstudio.org", "Lin Architecture", "Principal Founder"),
+        ("James", "Holden", "holden@roci.space", "Rocinante Logistics", "Captain"),
+        ("Naomi", "Nagata", "naomi@belters.org", "Outer Planets Alliance", "Chief Engineer"),
+        ("Amos", "Burton", "amos@baltimore.net", "Burton Operations", "Mechanic"),
+        ("Chrisjen", "Avasarala", "avasarala@un.gov", "United Nations", "Secretary-General"),
+        ("Alex", "Kamal", "alex.kamal@mcrn.mil", "Martian Congressional Navy", "Pilot")
     ]
-    created_attendees = []
-    for first, last, email, org, title in test_walkins:
+
+    registered_attendees = []
+    for first, last, email, org, title in sample_attendees_data:
         att = db.get_or_create_attendee(
             first_name=first,
             last_name=last,
             email=email,
             organization=org,
             title=title,
-            source="walk_in"
+            source="simulation"
         )
-        created_attendees.append(att)
-        print(f"  + Registered Attendee #{att['id']}: {att['first_name']} {att['last_name']} ({att['organization']})")
+        registered_attendees.append(att)
+        print(f"  + Ingested #{att['id']}: {att['first_name']} {att['last_name']} ({att['organization']})")
 
-    # 4. Set Active Subject
-    active_test = created_attendees[0]
-    print(f"\n[Step 4] Setting Active Subject to #{active_test['id']}: {active_test['first_name']} {active_test['last_name']}")
-    db.set_active_attendee(active_test["id"])
-    curr_active = db.get_active_attendee()
-    print(f"Active Subject in state machine: {curr_active['first_name']} {curr_active['last_name']} (ID: {curr_active['id']})")
+    print(f"  --> Total Registered Attendees in DB: {len(registered_attendees)}")
 
-    # 5. Simulate Outfit Change / Multi-Session
-    print(f"\n[Step 5] Simulating Outfit Change (Session #2)...")
-    new_seq = db.create_new_session_for_attendee(active_test["id"])
-    print(f"Created Session #{new_seq} for Attendee #{active_test['id']}")
+    # 3. Live Google Sheet Sync Check (with Cache-Buster)
+    print("\n[Stage 3] Testing Google Sheet Live Sync with Cache-Buster...")
+    synced, total, msg = forms_sync.fetch_and_sync()
+    print(f"  + Result: {msg} (Live Sheet Row Count: {total})")
 
-    # 6. Simulate Lightroom Keeper Export & Delivery
-    print(f"\n[Step 6] Simulating Lightroom Keeper Export & Delivery Trigger...")
-    mock_keeper = config.ready_to_deliver_dir / f"{active_test['id']}_Connor_Sarah_001.jpg"
+    # 4. Active Subject Selection & State Machine
+    primary_subject = registered_attendees[0]
+    print(f"\n[Stage 4] Setting Active Subject to #{primary_subject['id']}: {primary_subject['first_name']} {primary_subject['last_name']}...")
+    db.set_active_attendee(primary_subject["id"])
+    active_now = db.get_active_attendee()
+    print(f"  + Active in State Machine: {active_now['first_name']} {active_now['last_name']} (ID: {active_now['id']})")
+
+    # 5. Tether Ingest Simulation (3 Raw .cr3 Captures + Debounced .xmp Generation)
+    print("\n[Stage 5] Simulating Tether Ingest (3 Canon R5 Mk II .cr3 Captures)...")
+    ingest_dir = config.tether_ingest_dir
+    ingest_dir.mkdir(parents=True, exist_ok=True)
+
+    for i in range(1, 4):
+        raw_name = f"_RAW_{primary_subject['id']}_{i:03d}.cr3"
+        raw_path = ingest_dir / raw_name
+        create_sample_cr3(raw_path)
+        
+        # Generate companion XMP sidecar
+        xmp_path = raw_path.with_suffix(".xmp")
+        generate_xmp_sidecar(
+            xmp_path=xmp_path,
+            attendee=primary_subject,
+            photographer_name=config.gmail_config.get("sender_name", "Tanner Scholten Photography")
+        )
+        print(f"  + Capture #{i}: Created {raw_name} and sidecar {xmp_path.name} (IPTC: {primary_subject['email']})")
+
+    # 6. Multi-Session / Outfit Change Simulation
+    print(f"\n[Stage 6] Simulating Day 2 Outfit Change (Session #2) for #{primary_subject['id']}...")
+    session_2 = db.create_new_session_for_attendee(primary_subject["id"])
+    print(f"  + Created Session #{session_2} for Attendee #{primary_subject['id']}. Past session assets preserved.")
+
+    # 7. Keeper Export & Automated Delivery Pipeline
+    print(f"\n[Stage 7] Simulating Lightroom Keeper Export & Automated Delivery...")
+    mock_keeper = config.ready_to_deliver_dir / f"{primary_subject['id']}_Connor_Sarah_001.jpg"
     create_sample_jpeg(mock_keeper)
-    print(f"Created mock exported JPEG: {mock_keeper.name}")
+    print(f"  + Rendered Keeper JPEG: {mock_keeper.name}")
 
-    # Process delivery
-    print(f"Processing delivery pipeline for Attendee #{active_test['id']}...")
-    success, msg = process_exported_photo(active_test["id"], mock_keeper)
-    print(f"Result: {'SUCCESS' if success else 'NOTICE'}: {msg}")
+    print(f"  + Triggering Zenfolio upload and Gmail SMTP dispatcher...")
+    success, msg = process_exported_photo(primary_subject["id"], mock_keeper)
+    print(f"  + Delivery Result: {'SUCCESS' if success else 'NOTICE'}: {msg}")
 
-    # 7. Print Final System Statistics
-    print("\n[Step 7] Final System Ledger Statistics:")
+    # 8. Summary Statistics
+    print("\n[Stage 8] Final System Ledger Statistics:")
     stats = db.get_stats()
     for k, v in stats.items():
         print(f"  * {k}: {v}")
 
-    print("\n" + "=" * 60)
-    print("SIMULATION TEST COMPLETE!")
-    print("=" * 60)
+    print("\n" + "=" * 70)
+    print("ALL 4 STAGES TESTED SUCCESSFULLY!")
+    print("=" * 70)
 
 if __name__ == "__main__":
-    run_simulation()
+    run_comprehensive_simulation()

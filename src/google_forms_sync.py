@@ -13,21 +13,34 @@ class GoogleFormsSync:
     def __init__(self):
         self._running = False
         self._thread: Optional[threading.Thread] = None
+        self._stop_event = threading.Event()
 
     def fetch_and_sync(self) -> Tuple[int, int, str]:
         """
         Fetches published CSV from Google Sheet and syncs attendees into SQLite.
-        Returns: (new_or_updated_count, total_rows, message)
+        Uses epoch timestamp cache-busting and no-cache headers to bypass Google CDN lag.
         """
         csv_url = config.google_sheet_csv_url
         if not csv_url:
             return 0, 0, "No Google Sheet CSV URL configured."
 
         try:
+            # Append epoch timestamp cache-buster to bypass Google's 2-5 min CDN edge caching
+            cache_busted_url = csv_url
+            if "?" in csv_url:
+                cache_busted_url = f"{csv_url}&_t={int(time.time())}"
+            else:
+                cache_busted_url = f"{csv_url}?_t={int(time.time())}"
+
             ctx = ssl.create_default_context()
             req = urllib.request.Request(
-                csv_url,
-                headers={"User-Agent": "HeadshotBooth/1.0"}
+                cache_busted_url,
+                headers={
+                    "User-Agent": "HeadshotBooth/1.0",
+                    "Cache-Control": "no-cache, no-store, must-revalidate",
+                    "Pragma": "no-cache",
+                    "Expires": "0"
+                }
             )
             with urllib.request.urlopen(req, context=ctx, timeout=15) as resp:
                 content = resp.read().decode("utf-8-sig")
@@ -37,7 +50,6 @@ class GoogleFormsSync:
             
             synced_count = 0
             for row in rows:
-                # Find columns regardless of slight naming differences
                 first_name = row.get("First Name", "").strip()
                 last_name = row.get("Last Name", "").strip()
                 
@@ -80,11 +92,13 @@ class GoogleFormsSync:
         if self._running:
             return
         self._running = True
+        self._stop_event.clear()
         self._thread = threading.Thread(target=self._run_loop, daemon=True)
         self._thread.start()
 
     def stop_background_poller(self) -> None:
         self._running = False
+        self._stop_event.set()
 
     def _run_loop(self) -> None:
         while self._running:
@@ -93,12 +107,10 @@ class GoogleFormsSync:
             except Exception as e:
                 print(f"[GoogleFormsSync] Background poll error: {e}")
             
-            # Sleep in 1-second chunks to allow rapid shutdown
-            interval = config.poll_interval_seconds
-            for _ in range(max(5, interval)):
-                if not self._running:
-                    break
-                time.sleep(1)
+            # Event-based sleep allows instant graceful shutdown
+            interval = max(5, config.poll_interval_seconds)
+            if self._stop_event.wait(timeout=interval):
+                break
 
 # Global sync instance
 forms_sync = GoogleFormsSync()
