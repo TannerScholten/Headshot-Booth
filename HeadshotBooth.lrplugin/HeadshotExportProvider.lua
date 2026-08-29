@@ -83,12 +83,19 @@ function exportServiceProvider.processRenderedPhotos( functionContext, exportCon
                 },
             }
 
-            local responseBody, responseHeaders = LrHttp.postMultipart( apiUrl, mimeChunks )
+            local responseBody, responseHeaders = LrHttp.postMultipart( apiUrl, mimeChunks, 45 )
 
             if responseHeaders and responseHeaders.status == 200 then
                 successCount = successCount + 1
+                if responseBody then
+                    -- Extract attendee_name and gallery_url if present in JSON
+                    local attName = responseBody:match('"attendee_name"%s*:%s*"([^"]+)"')
+                    local galUrl = responseBody:match('"gallery_url"%s*:%s*"([^"]+)"')
+                    if attName then lastAttendeeName = attName end
+                    if galUrl then lastGalleryUrl = galUrl end
+                end
             else
-                local errDetail = responseBody or "Local delivery server not reachable. Ensure run_booth.bat is running."
+                local errDetail = responseBody or "Local delivery server not reachable. Ensure run_booth.bat is running at localhost:8000."
                 table.insert( failures, string.format( "%s: %s", filename, errDetail ) )
             end
         else
@@ -100,7 +107,12 @@ function exportServiceProvider.processRenderedPhotos( functionContext, exportCon
         local msg = string.format( "%d photo(s) failed delivery.\n\nMake sure the Headshot Booth app is running at localhost:8000.", #failures )
         LrDialogs.message( "Headshot Delivery Error", table.concat( failures, "\n" ), "critical" )
     else
-        LrDialogs.showBezel( string.format( "Delivered %d Headshot(s) Successfully!", successCount ), 4 )
+        if lastAttendeeName ~= "" then
+            local bezelMsg = string.format( "Delivered to %s! 🚀", lastAttendeeName )
+            LrDialogs.showBezel( bezelMsg, 4 )
+        else
+            LrDialogs.showBezel( string.format( "Delivered %d Headshot Keeper(s) Successfully!", successCount ), 4 )
+        end
     end
 end
 

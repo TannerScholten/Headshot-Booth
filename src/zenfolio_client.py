@@ -14,7 +14,7 @@ class ZenfolioClient:
         self.token: Optional[str] = None
         self._ctx = ssl.create_default_context()
 
-    def _call(self, method: str, params: list) -> Any:
+    def _call(self, method: str, params: list, retry_on_auth_fail: bool = True) -> Any:
         headers = {
             "Content-Type": "application/json; charset=utf-8",
             "User-Agent": "HeadshotBooth/1.0"
@@ -30,11 +30,24 @@ class ZenfolioClient:
         data = json.dumps(payload).encode("utf-8")
         req = urllib.request.Request(self.API_URL, data=data, headers=headers)
         
-        with urllib.request.urlopen(req, context=self._ctx, timeout=20) as resp:
-            body = json.loads(resp.read().decode("utf-8"))
-            if body.get("error"):
-                raise RuntimeError(f"Zenfolio API Error [{method}]: {body['error']}")
-            return body.get("result")
+        try:
+            with urllib.request.urlopen(req, context=self._ctx, timeout=20) as resp:
+                body = json.loads(resp.read().decode("utf-8"))
+                if body.get("error"):
+                    err_msg = str(body['error'])
+                    # If token expired or auth failed, transparently re-authenticate once
+                    if retry_on_auth_fail and ("auth" in err_msg.lower() or "token" in err_msg.lower() or "session" in err_msg.lower()):
+                        print(f"[Zenfolio] Token expired. Re-authenticating and retrying {method}...")
+                        self.authenticate()
+                        return self._call(method, params, retry_on_auth_fail=False)
+                    raise RuntimeError(f"Zenfolio API Error [{method}]: {err_msg}")
+                return body.get("result")
+        except urllib.error.HTTPError as he:
+            if he.code == 401 and retry_on_auth_fail:
+                print(f"[Zenfolio] Received HTTP 401. Re-authenticating...")
+                self.authenticate()
+                return self._call(method, params, retry_on_auth_fail=False)
+            raise
 
     def authenticate(self) -> str:
         zf_cfg = config.zenfolio_config
@@ -43,7 +56,7 @@ class ZenfolioClient:
         if not username or not password:
             raise ValueError("Zenfolio credentials missing from config.json")
 
-        self.token = self._call("AuthenticatePlain", [username, password])
+        self.token = self._call("AuthenticatePlain", [username, password], retry_on_auth_fail=False)
         return self.token
 
     def ensure_authenticated(self) -> None:
@@ -126,19 +139,32 @@ class ZenfolioClient:
             "User-Agent": "HeadshotBooth/1.0",
             "X-Zenfolio-Token": self.token,
             "X-Zenfolio-Filename": filename,
-            "Content-Type": "image/jpeg",
-            "Content-Length": str(len(file_bytes))
+            "Content-Type": "image/jpeg"
         }
 
         req = urllib.request.Request(upload_url, data=file_bytes, headers=headers, method="POST")
-        with urllib.request.urlopen(req, context=self._ctx, timeout=60) as resp:
-            body = resp.read().decode("utf-8", errors="ignore")
-            # Zenfolio upload response is XML/JSON with Photo ID
-            try:
-                data = json.loads(body)
-                return data.get("Id") or data.get("result")
-            except Exception:
-                return None
+        try:
+            with urllib.request.urlopen(req, context=self._ctx, timeout=60) as resp:
+                body = resp.read().decode("utf-8", errors="ignore")
+                try:
+                    data = json.loads(body)
+                    return data.get("Id") or data.get("result")
+                except Exception:
+                    return None
+        except urllib.error.HTTPError as he:
+            if he.code == 401:
+                print(f"[Zenfolio] Upload token expired (401). Re-authenticating and retrying upload...")
+                self.authenticate()
+                headers["X-Zenfolio-Token"] = self.token
+                req = urllib.request.Request(upload_url, data=file_bytes, headers=headers, method="POST")
+                with urllib.request.urlopen(req, context=self._ctx, timeout=60) as resp:
+                    body = resp.read().decode("utf-8", errors="ignore")
+                    try:
+                        data = json.loads(body)
+                        return data.get("Id") or data.get("result")
+                    except Exception:
+                        return None
+            raise
 
 # Global client
 zenfolio = ZenfolioClient()

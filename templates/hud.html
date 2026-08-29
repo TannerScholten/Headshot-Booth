@@ -32,6 +32,9 @@
             </div>
 
             <div class="header-actions">
+                <button class="btn btn-secondary" id="btn-toggle-chime" onclick="toggleChime()" title="Toggle audio chime on subject change">
+                    <span id="chime-icon">🔔</span> <span id="chime-label">Chime: ON</span>
+                </button>
                 <button class="btn btn-secondary" id="btn-sync-google" title="Fetch latest Google Form responses">
                     <span class="btn-icon">🔄</span> Sync Form
                 </button>
@@ -42,7 +45,7 @@
         </header>
 
         <!-- Main HUD Center: Active Subject Banner (High-Contrast 40pt+) -->
-        <section class="active-subject-card" id="active-card">
+        <section class="active-subject-card {% if active_attendee %}active-selected{% endif %}" id="active-card">
             <div class="active-tag">CURRENT ACTIVE SUBJECT</div>
             
             {% if active_attendee %}
@@ -57,7 +60,10 @@
                     <span class="active-email">✉️ {{ active_attendee.email }}</span>
                     {% if active_attendee.phone %}<span class="active-phone">📞 {{ active_attendee.phone }}</span>{% endif %}
                     {% if active_attendee.zenfolio_gallery_url %}
-                    <a href="{{ active_attendee.zenfolio_gallery_url }}" target="_blank" class="active-gallery-link">🔗 Private Gallery</a>
+                    <span class="gallery-link-group">
+                        <a href="{{ active_attendee.zenfolio_gallery_url }}" target="_blank" class="active-gallery-link">🔗 Private Gallery</a>
+                        <button class="btn-copy-url" onclick="copyGalleryUrl('{{ active_attendee.zenfolio_gallery_url }}')" title="Copy gallery link to clipboard">📋 Copy Link</button>
+                    </span>
                     {% endif %}
                 </div>
                 <div class="active-actions">
@@ -123,7 +129,10 @@
             <div class="panel queue-panel">
                 <div class="panel-header">
                     <h3>Recent Deliveries</h3>
-                    <button class="btn btn-sm btn-secondary" onclick="refreshOutbox()">Refresh</button>
+                    <div style="display: flex; gap: 6px;">
+                        <button class="btn btn-sm btn-secondary" onclick="retryFailedDeliveries()" title="Re-send all failed emails">🔁 Retry Failed</button>
+                        <button class="btn btn-sm btn-secondary" onclick="refreshOutbox()">Refresh</button>
+                    </div>
                 </div>
                 <div class="queue-list" id="queue-list">
                     <div class="queue-loading">Loading outbox status...</div>

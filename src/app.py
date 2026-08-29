@@ -17,16 +17,7 @@ from src.delivery_watcher import process_exported_photo, delivery_watcher
 from src.ingest_watcher import ingest_watcher
 from src.email_service import email_service
 
-app = FastAPI(title="Headshot Booth & Delivery System", version="1.0.0")
-
-# Mount static and template directories
-static_dir = PROJECT_ROOT / "static"
-templates_dir = PROJECT_ROOT / "templates"
-static_dir.mkdir(parents=True, exist_ok=True)
-templates_dir.mkdir(parents=True, exist_ok=True)
-
-app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
-templates = Jinja2Templates(directory=str(templates_dir))
+from contextlib import asynccontextmanager
 
 # Windows Power Management flags
 ES_CONTINUOUS = 0x80000000
@@ -44,18 +35,19 @@ def set_windows_power_stay_awake(enable: bool = True):
         except Exception as e:
             print(f"[PowerManagement] Notice: {e}")
 
-# Lifecycle: start background workers on startup
-@app.on_event("startup")
-def on_startup():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
     db.init_db()
     set_windows_power_stay_awake(True)
     forms_sync.start_background_poller()
     delivery_watcher.start()
     ingest_watcher.start()
     print("[System] Background workers and Windows USB stay-awake active.")
-
-@app.on_event("shutdown")
-def on_shutdown():
+    
+    yield
+    
+    # Shutdown
     forms_sync.stop_background_poller()
     delivery_watcher.stop()
     ingest_watcher.stop()
@@ -69,6 +61,17 @@ def on_shutdown():
     except Exception as e:
         print(f"[Shutdown] WAL Checkpoint error: {e}")
     print("[System] Clean shutdown completed.")
+
+app = FastAPI(title="Headshot Booth & Delivery System", version="1.0.0", lifespan=lifespan)
+
+# Mount static and template directories
+static_dir = PROJECT_ROOT / "static"
+templates_dir = PROJECT_ROOT / "templates"
+static_dir.mkdir(parents=True, exist_ok=True)
+templates_dir.mkdir(parents=True, exist_ok=True)
+
+app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+templates = Jinja2Templates(directory=str(templates_dir))
 
 # --- Web UI Routes ---
 
@@ -212,6 +215,38 @@ async def api_send_batch():
         "sent_count": sent_count,
         "failed_count": len(failures),
         "failures": failures
+    }
+
+@app.post("/api/outbox/retry-failed")
+async def api_retry_failed():
+    with db.get_connection() as conn:
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM delivery_records WHERE status = 'FAILED'")
+        failed_records = [dict(r) for r in cursor.fetchall()]
+
+    if not failed_records:
+        return {"status": "info", "message": "No failed deliveries to retry.", "retried_count": 0}
+
+    retried_count = 0
+    errors = []
+
+    for record in failed_records:
+        attendee = db.get_attendee_by_id(record["attendee_id"])
+        if attendee:
+            success, msg = email_service.send_delivery_email(attendee)
+            if success:
+                db.update_delivery_status(record["id"], "SENT")
+                retried_count += 1
+            else:
+                db.update_delivery_status(record["id"], "FAILED", error_message=msg)
+                errors.append(f"{attendee.get('first_name')}: {msg}")
+
+    return {
+        "status": "success" if not errors else "partial",
+        "retried_count": retried_count,
+        "failed_count": len(errors),
+        "errors": errors,
+        "message": f"Retried {retried_count} failed delivery notice(s)."
     }
 
 # --- Lightroom Plugin Delivery Endpoint ---

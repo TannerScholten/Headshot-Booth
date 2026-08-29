@@ -1,6 +1,8 @@
 // --- Global State & Elements ---
 let activeAttendeeId = null;
 let searchDebounceTimer = null;
+let highlightedIndex = 0;
+let chimeEnabled = localStorage.getItem("chimeEnabled") !== "false";
 
 const searchInput = document.getElementById("search-input");
 const attendeeList = document.getElementById("attendee-list");
@@ -11,6 +13,7 @@ const btnSync = document.getElementById("btn-sync-google");
 
 // --- Initialization ---
 document.addEventListener("DOMContentLoaded", () => {
+    updateChimeButtonUI();
     setupKeyboardShortcuts();
     setupSearchInput();
     refreshOutbox();
@@ -24,7 +27,25 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 // --- Audio Cue (Web Audio API Synthesizer) ---
+function toggleChime() {
+    chimeEnabled = !chimeEnabled;
+    localStorage.setItem("chimeEnabled", chimeEnabled);
+    updateChimeButtonUI();
+    showToast(`Audio Chime ${chimeEnabled ? "Enabled" : "Muted"}`, "info");
+    if (chimeEnabled) playChime();
+}
+
+function updateChimeButtonUI() {
+    const icon = document.getElementById("chime-icon");
+    const label = document.getElementById("chime-label");
+    if (icon && label) {
+        icon.textContent = chimeEnabled ? "🔔" : "🔕";
+        label.textContent = chimeEnabled ? "Chime: ON" : "Chime: OFF";
+    }
+}
+
 function playChime() {
+    if (!chimeEnabled) return;
     try {
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         const now = audioCtx.currentTime;
@@ -58,8 +79,6 @@ function playChime() {
 }
 
 // --- Keyboard Shortcuts & Arrow Navigation ---
-let highlightedIndex = -1;
-
 function setupKeyboardShortcuts() {
     document.addEventListener("keydown", (e) => {
         // Alt+N -> Open Walk-In Modal
@@ -129,13 +148,20 @@ function updateHighlightedItem(items) {
     });
 }
 
-// --- Live Search ---
+// --- Live Search & Barcode Parsing ---
 function setupSearchInput() {
     searchInput.addEventListener("input", () => {
         clearTimeout(searchDebounceTimer);
         searchDebounceTimer = setTimeout(() => {
-            fetchSearch(searchInput.value);
-        }, 200);
+            let val = searchInput.value.trim();
+            // Clean common QR/badge scanner prefixes (e.g. ID:1001 or URL?id=1001)
+            const idMatch = val.match(/(?:id[=:]\s*|\bid\s*)(\d{4})/i);
+            if (idMatch) {
+                val = idMatch[1];
+                searchInput.value = val;
+            }
+            fetchSearch(val);
+        }, 150);
     });
 }
 
@@ -158,11 +184,15 @@ function clearSearch() {
 function renderAttendeeList(attendees) {
     if (!attendees || attendees.length === 0) {
         attendeeList.innerHTML = `<div style="padding: 20px; text-align: center; color: #64748b;">No attendees found.</div>`;
+        highlightedIndex = -1;
         return;
     }
 
-    attendeeList.innerHTML = attendees.map(a => `
-        <div class="attendee-item ${activeAttendeeId === a.id ? 'selected' : ''}" onclick="selectAttendee(${a.id})">
+    // Default highlight first result for instant Enter-key selection
+    highlightedIndex = 0;
+
+    attendeeList.innerHTML = attendees.map((a, idx) => `
+        <div class="attendee-item ${idx === 0 ? 'highlighted' : ''} ${activeAttendeeId === a.id ? 'selected' : ''}" onclick="selectAttendee(${a.id})">
             <div class="item-left">
                 <span class="item-id">#${a.id}</span>
                 <div class="item-info">
@@ -222,8 +252,31 @@ async function newSession(id) {
     }
 }
 
+function copyGalleryUrl(url) {
+    if (!url) return;
+    navigator.clipboard.writeText(url).then(() => {
+        showToast("Gallery link copied to clipboard! 📋", "success");
+    }).catch(() => {
+        prompt("Copy gallery URL:", url);
+    });
+}
+
+async function retryFailedDeliveries() {
+    try {
+        showToast("Retrying failed deliveries...", "info");
+        const resp = await fetch("/api/outbox/retry-failed", { method: "POST" });
+        const data = await resp.json();
+        showToast(data.message, data.status === "success" ? "success" : "info");
+        refreshOutbox();
+        pollStatus();
+    } catch (e) {
+        showToast("Failed to retry outbox", "error");
+    }
+}
+
 function renderActiveCard(attendee) {
     if (!attendee) {
+        activeCard.classList.remove("active-selected");
         activeCard.innerHTML = `
             <div class="active-tag">CURRENT ACTIVE SUBJECT</div>
             <div class="active-content empty-state">
@@ -235,6 +288,7 @@ function renderActiveCard(attendee) {
         return;
     }
 
+    activeCard.classList.add("active-selected");
     activeCard.innerHTML = `
         <div class="active-tag">CURRENT ACTIVE SUBJECT</div>
         <div class="active-content">
@@ -247,7 +301,11 @@ function renderActiveCard(attendee) {
             <div class="active-meta">
                 <span class="active-email">✉️ ${escapeHtml(attendee.email)}</span>
                 ${attendee.phone ? `<span class="active-phone">📞 ${escapeHtml(attendee.phone)}</span>` : ''}
-                ${attendee.zenfolio_gallery_url ? `<a href="${attendee.zenfolio_gallery_url}" target="_blank" class="active-gallery-link">🔗 Private Gallery</a>` : ''}
+                ${attendee.zenfolio_gallery_url ? `
+                <span class="gallery-link-group">
+                    <a href="${attendee.zenfolio_gallery_url}" target="_blank" class="active-gallery-link">🔗 Private Gallery</a>
+                    <button class="btn-copy-url" onclick="copyGalleryUrl('${attendee.zenfolio_gallery_url}')" title="Copy gallery link">📋 Copy Link</button>
+                </span>` : ''}
             </div>
             <div class="active-actions">
                 <button class="btn btn-warning" onclick="newSession(${attendee.id})">
