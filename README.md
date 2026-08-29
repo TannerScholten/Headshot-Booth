@@ -2,6 +2,8 @@
 
 An automated, operator-friendly workflow system for high-volume professional conference headshot stations (~400 attendees). Connects attendee intake (Google Forms & on-site walk-ins) with tethered captures in Adobe Lightroom Classic, automated Zenfolio gallery creation, and personalized email notifications via Gmail.
 
+👉 **Looking for step-by-step laptop setup instructions? Check out the [Laptop Setup & Deployment Guide](LAPTOP_SETUP_GUIDE.md).**
+
 ---
 
 ## Features
