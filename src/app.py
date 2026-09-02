@@ -8,11 +8,14 @@ from fastapi.templating import Jinja2Templates
 from pydantic import BaseModel
 
 import sys
+PROJECT_DIR = Path(__file__).resolve().parent.parent
+if str(PROJECT_DIR) not in sys.path:
+    sys.path.insert(0, str(PROJECT_DIR))
 import ctypes
 
 from src.config import config, PROJECT_ROOT
 from src import db
-from src.google_forms_sync import forms_sync
+from src.google_forms_sync import forms_sync, submit_walkin_to_google_form
 from src.delivery_watcher import process_exported_photo, delivery_watcher
 from src.ingest_watcher import ingest_watcher
 from src.email_service import email_service
@@ -136,6 +139,12 @@ async def api_get_active():
         "stats": db.get_stats()
     }
 
+@app.post("/api/active/clear")
+@app.delete("/api/active")
+async def api_clear_active():
+    db.set_active_attendee(None)
+    return {"status": "success", "active": None}
+
 @app.post("/api/active/{attendee_id}")
 async def api_set_active(attendee_id: int):
     attendee = db.get_attendee_by_id(attendee_id)
@@ -144,16 +153,22 @@ async def api_set_active(attendee_id: int):
     active = db.set_active_attendee(attendee_id)
     return {"status": "success", "active": active}
 
-@app.post("/api/active/clear")
-async def api_clear_active():
-    db.set_active_attendee(None)
-    return {"status": "success", "active": None}
-
 @app.post("/api/session/new/{attendee_id}")
 async def api_new_session(attendee_id: int):
     new_seq = db.create_new_session_for_attendee(attendee_id)
     db.set_active_attendee(attendee_id)
     return {"status": "success", "session_number": new_seq, "active": db.get_active_attendee()}
+
+@app.post("/api/attendee/{attendee_id}/resend-email")
+async def api_resend_email(attendee_id: int):
+    attendee = db.get_attendee_by_id(attendee_id)
+    if not attendee:
+        raise HTTPException(status_code=404, detail="Attendee not found")
+    success, msg = email_service.send_delivery_email(attendee)
+    if success:
+        return {"status": "success", "message": f"Gallery link successfully resent to {attendee['email']}!"}
+    else:
+        raise HTTPException(status_code=500, detail=f"Failed to resend email: {msg}")
 
 @app.get("/api/search")
 async def api_search(q: str = "", filter_type: str = "all"):
@@ -161,7 +176,7 @@ async def api_search(q: str = "", filter_type: str = "all"):
     return {"results": results}
 
 @app.post("/api/walkin")
-async def api_walkin(data: WalkInRequest):
+async def api_walkin(data: WalkInRequest, background_tasks: BackgroundTasks):
     attendee = db.get_or_create_attendee(
         first_name=data.first_name,
         last_name=data.last_name,
@@ -171,8 +186,20 @@ async def api_walkin(data: WalkInRequest):
         phone=data.phone or "",
         source="walk_in"
     )
-    # Set as active subject immediately
+    # Set as active subject immediately on HUD
     db.set_active_attendee(attendee["id"])
+
+    # Push to Google Form in background for permanent long-term records
+    background_tasks.add_task(
+        submit_walkin_to_google_form,
+        first_name=data.first_name,
+        last_name=data.last_name,
+        email=data.email,
+        phone=data.phone or "",
+        organization=data.organization or "",
+        title=data.title or ""
+    )
+
     return {"status": "success", "attendee": attendee}
 
 @app.post("/api/sync")
@@ -194,7 +221,7 @@ async def api_stats():
 async def api_outbox():
     return {
         "pending": db.get_pending_deliveries(),
-        "recent": db.get_recent_deliveries(limit=30)
+        "recent": db.get_grouped_recent_deliveries(limit=35)
     }
 
 @app.post("/api/outbox/send-batch")

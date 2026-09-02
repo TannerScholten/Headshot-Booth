@@ -52,6 +52,14 @@ class Config:
         return self.data.get("zenfolio", {})
 
     @property
+    def gps_config(self) -> Dict[str, Any]:
+        return self.data.get("gps", {})
+
+    @property
+    def gps_enabled(self) -> bool:
+        return bool(self.gps_config.get("enabled", False))
+
+    @property
     def sms_config(self) -> Dict[str, Any]:
         return self.data.get("sms", {})
 
@@ -65,23 +73,23 @@ class Config:
 
     @property
     def browser_profile_dir(self) -> Path:
-        rel = self.sms_config.get("browser_profile_dir", "data/browser_profile")
-        return PROJECT_ROOT / rel
+        p = Path(self.sms_config.get("browser_profile_dir", "data/browser_profile"))
+        return p if p.is_absolute() else (PROJECT_ROOT / p)
 
     @property
     def database_path(self) -> Path:
-        rel = self.data.get("paths", {}).get("database_file", "data/booth.db")
-        return PROJECT_ROOT / rel
+        p = Path(self.data.get("paths", {}).get("database_file", "data/booth.db"))
+        return p if p.is_absolute() else (PROJECT_ROOT / p)
 
     @property
     def tether_ingest_dir(self) -> Path:
-        rel = self.data.get("paths", {}).get("tether_ingest_dir", "shoot_folders/01_Tether_Ingest")
-        return PROJECT_ROOT / rel
+        p = Path(self.data.get("paths", {}).get("tether_ingest_dir", "shoot_folders/01_Tether_Ingest"))
+        return p if p.is_absolute() else (PROJECT_ROOT / p)
 
     @property
     def ready_to_deliver_dir(self) -> Path:
-        rel = self.data.get("paths", {}).get("ready_to_deliver_dir", "shoot_folders/03_Ready_To_Deliver")
-        return PROJECT_ROOT / rel
+        p = Path(self.data.get("paths", {}).get("ready_to_deliver_dir", "shoot_folders/03_Ready_To_Deliver"))
+        return p if p.is_absolute() else (PROJECT_ROOT / p)
 
     def _ensure_directories(self) -> None:
         self.database_path.parent.mkdir(parents=True, exist_ok=True)

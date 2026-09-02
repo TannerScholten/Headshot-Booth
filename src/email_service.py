@@ -67,7 +67,15 @@ class EmailService:
         }
         
         html_body = jinja_tpl.render(ctx)
-        subject = f"Your Professional Headshots from {event_name}"
+
+        # Dynamic subject line: extract from <title> tag in template, or fallback to default
+        import re
+        title_match = re.search(r'<title>(.*?)</title>', template_str, re.IGNORECASE | re.DOTALL)
+        if title_match and title_match.group(1).strip():
+            raw_subj = title_match.group(1).strip()
+            subject = Template(raw_subj).render(ctx)
+        else:
+            subject = f"Your Professional Headshots from {event_name}"
 
         # Clean plain-text fallback
         plain_text = f"""Hi {first_name},
@@ -79,9 +87,17 @@ Your professional portraits have been calibrated and uploaded to your private on
 View and download your headshots here:
 {gallery_url}
 
-Download Options:
-- Original High-Resolution: Best for printing or press releases.
-- Optimized Web-Size: Perfectly scaled for LinkedIn, websites, and profile pictures.
+Thesis Research:
+https://new.express.adobe.com/webpage/Rgl6JSa7FZVnw/
+
+My Photography:
+https://www.tannereli.com/landscapes
+
+Instagram:
+https://www.instagram.com/TannerScholten
+
+If you were pleased with my work, it would be very helpful to me as a small business if you could leave a quick review on my Google Maps listing:
+https://maps.app.goo.gl/34xqcCANceTbRJHA6?g_st=ac
 
 Best regards,
 {sender_name}

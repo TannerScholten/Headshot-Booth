@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Operator HUD — {{ event_name }}</title>
-    <link rel="stylesheet" href="/static/css/style.css">
+    <link rel="stylesheet" href="/static/css/style.css?v=2.1">
 </head>
 <body>
     <div class="hud-container">
@@ -17,17 +17,17 @@
             </div>
             
             <div class="header-stats">
-                <div class="stat-pill">
+                <div class="stat-pill" title="Total registered attendees">
                     <span class="stat-label">Registered</span>
                     <span class="stat-val" id="stat-total">{{ stats.total_attendees }}</span>
                 </div>
-                <div class="stat-pill">
-                    <span class="stat-label">Delivered</span>
-                    <span class="stat-val text-success" id="stat-sent">{{ stats.sent_deliveries }}</span>
+                <div class="stat-pill" title="Unique clients photographed and delivered">
+                    <span class="stat-label">Clients Shot</span>
+                    <span class="stat-val text-success" id="stat-clients">{{ stats.clients_shot }}</span>
                 </div>
-                <div class="stat-pill">
-                    <span class="stat-label">Pending</span>
-                    <span class="stat-val text-warning" id="stat-pending">{{ stats.pending_deliveries }}</span>
+                <div class="stat-pill" title="Total keeper JPEG photo files uploaded to Zenfolio">
+                    <span class="stat-label">Photos Delivered</span>
+                    <span class="stat-val text-info" id="stat-photos">{{ stats.total_photos }}</span>
                 </div>
             </div>
 
@@ -50,44 +50,56 @@
             </div>
         </header>
 
-        <!-- Main HUD Center: Active Subject Banner (High-Contrast 40pt+) -->
-        <section class="active-subject-card {% if active_attendee %}active-selected{% endif %}" id="active-card">
-            <div class="active-tag">CURRENT ACTIVE SUBJECT</div>
-            
+        <!-- Main HUD Center: Active Subject Banner (Compact Half-Height with Integrated QR) -->
+        <section class="active-subject-card {% if active_attendee %}active-selected{% endif %}" id="active-card" style="display: flex; justify-content: space-between; align-items: center; padding: 10px 18px; min-height: 80px; gap: 16px;">
             {% if active_attendee %}
-            <div class="active-content" id="active-content">
-                <div class="active-id-badge">ID: {{ active_attendee.id }}</div>
-                <h2 class="active-name">{{ active_attendee.first_name }} {{ active_attendee.last_name }}</h2>
-                <div class="active-details">
-                    {% if active_attendee.title %}<span class="active-title">{{ active_attendee.title }}</span>{% endif %}
-                    {% if active_attendee.organization %}<span class="active-org"> &bull; {{ active_attendee.organization }}</span>{% endif %}
+            <div class="active-left-col" style="flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0;">
+                <div class="active-header-row" style="display: flex; align-items: center; gap: 10px;">
+                    <span class="active-tag" style="font-size: 10px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase;">CURRENT ACTIVE SUBJECT</span>
+                    <span class="active-id-badge" style="padding: 1px 7px; font-size: 11px;">ID: {{ active_attendee.id }}</span>
                 </div>
-                <div class="active-meta">
+                <div class="active-name-row" style="display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;">
+                    <h2 class="active-name" style="font-size: 26px; font-weight: 800; color: #ffffff; line-height: 1.1; margin: 0;">{{ active_attendee.first_name }} {{ active_attendee.last_name }}</h2>
+                    <div class="active-details" style="font-size: 14px; color: #cbd5e1; margin: 0;">
+                        {% if active_attendee.title %}<span class="active-title">{{ active_attendee.title }}</span>{% endif %}
+                        {% if active_attendee.organization %}<span class="active-org">&bull; {{ active_attendee.organization }}</span>{% endif %}
+                    </div>
+                </div>
+                <div class="active-meta-row" style="display: flex; align-items: center; gap: 14px; font-size: 12px; color: #94a3b8; flex-wrap: wrap;">
                     <span class="active-email">✉️ {{ active_attendee.email }}</span>
                     {% if active_attendee.phone %}<span class="active-phone">📞 {{ active_attendee.phone }}</span>{% endif %}
                     {% if active_attendee.zenfolio_gallery_url %}
-                    <span class="gallery-link-group">
-                        <a href="{{ active_attendee.zenfolio_gallery_url }}" target="_blank" class="active-gallery-link">🔗 Private Gallery</a>
-                        <button class="btn-copy-url" onclick="copyGalleryUrl('{{ active_attendee.zenfolio_gallery_url }}')" title="Copy gallery link to clipboard">📋 Copy Link</button>
+                    <span class="gallery-link-group" style="display: inline-flex; align-items: center; gap: 4px;">
+                        <a href="{{ active_attendee.zenfolio_gallery_url }}" target="_blank" class="active-gallery-link">🔗 Gallery</a>
+                        <button class="btn-copy-url" onclick="copyGalleryUrl('{{ active_attendee.zenfolio_gallery_url }}')" title="Copy gallery link">📋 Copy</button>
                     </span>
                     {% endif %}
-                </div>
-                <div class="active-actions">
-                    <button class="btn btn-warning" onclick="newSession({{ active_attendee.id }})">
-                        👔 Outfit Change / Session #2
-                    </button>
-                    <button class="btn btn-outline" onclick="clearActive()">
-                        ✕ Clear Subject
-                    </button>
+                    <div class="active-actions-inline" style="display: inline-flex; align-items: center; gap: 6px; margin-left: auto;">
+                        {% if active_attendee.zenfolio_gallery_url %}
+                        <button class="btn btn-xs btn-secondary" onclick="resendEmail({{ active_attendee.id }})" title="Resend email">✉️ Resend</button>
+                        {% endif %}
+                        <button class="btn btn-xs btn-warning" onclick="newSession({{ active_attendee.id }})" title="New outfit/session">👔 Outfit #2</button>
+                        <button class="btn btn-xs btn-outline" onclick="clearActive()" title="Clear active subject">✕ Clear</button>
+                    </div>
                 </div>
             </div>
             {% else %}
-            <div class="active-content empty-state" id="active-content">
-                <div class="empty-icon">📷</div>
-                <h2 class="active-name text-muted">No Subject Selected</h2>
-                <p class="empty-hint">Type a name below or press <strong>Alt+N</strong> for walk-in registration</p>
+            <div class="active-left-col empty-state-compact" style="flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 4px;">
+                <div class="active-header-row">
+                    <span class="active-tag" style="font-size: 10px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase;">CURRENT ACTIVE SUBJECT</span>
+                </div>
+                <div class="active-name-row" style="display: flex; align-items: baseline; gap: 12px;">
+                    <h2 class="active-name text-muted" style="font-size: 26px; font-weight: 800; line-height: 1.1; margin: 0;">No Subject Selected</h2>
+                    <span class="empty-hint" style="font-size: 13px; color: #94a3b8;">Type a name below or press <strong>Alt+N</strong> for walk-in registration</span>
+                </div>
             </div>
             {% endif %}
+
+            <!-- Right Edge Integrated QR Code (Double Size for Easy Phone Scanning) -->
+            <div class="active-qr-box" onclick="openQrModal()" title="Click to enlarge Walk-Up Registration QR Code" style="display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(15, 23, 42, 0.85); border: 1px solid #334155; border-radius: 8px; padding: 6px 8px; cursor: pointer; flex-shrink: 0; width: 124px;">
+                <img src="/static/img/registration_qr.png" alt="Register QR" class="active-qr-img" style="width: 110px; height: 110px; max-width: 110px; max-height: 110px; background: #ffffff; border-radius: 6px; padding: 3px; display: block;">
+                <span class="active-qr-label" style="font-size: 10px; font-weight: 700; color: #38bdf8; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;">📱 Scan to Register</span>
+            </div>
         </section>
 
         <!-- Search & Attendee Selection Panel -->
@@ -108,8 +120,8 @@
 
                 <!-- Filter Pills -->
                 <div class="filter-bar">
-                    <button class="filter-pill active" id="pill-all" onclick="setFilter('all')">All</button>
-                    <button class="filter-pill" id="pill-unshot" onclick="setFilter('unshot')">⏳ Waiting / Unshot</button>
+                    <button class="filter-pill" id="pill-all" onclick="setFilter('all')">All</button>
+                    <button class="filter-pill active" id="pill-unshot" onclick="setFilter('unshot')">⏳ Waiting / Unshot</button>
                     <button class="filter-pill" id="pill-delivered" onclick="setFilter('delivered')">✅ Delivered</button>
                 </div>
 
@@ -200,9 +212,28 @@
         </div>
     </div>
 
+    <!-- QR Code Large Display Modal -->
+    <div class="modal" id="qr-modal" style="display: none;">
+        <div class="modal-backdrop" onclick="closeQrModal()"></div>
+        <div class="modal-card" style="max-width: 380px; text-align: center; padding: 30px 24px;">
+            <div class="modal-header" style="justify-content: center; margin-bottom: 12px;">
+                <h3 style="margin: 0; font-size: 20px;">📱 Walk-Up Registration</h3>
+            </div>
+            <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 20px;">
+                Scan with your phone camera to open the sign-in form:
+            </p>
+            <div style="background: #ffffff; padding: 16px; border-radius: 12px; display: inline-block; box-shadow: 0 4px 20px rgba(0,0,0,0.3); margin-bottom: 20px;">
+                <img src="/static/img/registration_qr.png" alt="Registration QR Code" style="width: 240px; height: 240px; display: block;">
+            </div>
+            <div class="modal-footer" style="justify-content: center;">
+                <button type="button" class="btn btn-secondary" onclick="closeQrModal()">Close (Esc)</button>
+            </div>
+        </div>
+    </div>
+
     <!-- Toast Alert Box -->
     <div class="toast-container" id="toast-container"></div>
 
-    <script src="/static/js/app.js"></script>
+    <script src="/static/js/app.js?v=2.3"></script>
 </body>
 </html>

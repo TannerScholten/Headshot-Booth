@@ -37,12 +37,13 @@ class IngestWatcher:
         while self._running:
             try:
                 if watch_dir.exists():
-                    for raw_file in watch_dir.glob("*.[cC][rR]3"):
-                        if raw_file.name in self._processed:
+                    for raw_file in watch_dir.rglob("*.[cC][rR]3"):
+                        file_key = str(raw_file.resolve())
+                        if file_key in self._processed:
                             continue
                         
                         if self._is_file_ready(raw_file):
-                            self._processed.add(raw_file.name)
+                            self._processed.add(file_key)
                             self._process_raw_capture(raw_file)
             except Exception as e:
                 print(f"[IngestWatcher] Error: {e}")
