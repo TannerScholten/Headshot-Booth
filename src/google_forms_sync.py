@@ -1,13 +1,46 @@
 import csv
 import io
 import time
+import re
 import threading
 import urllib.request
 import ssl
 from datetime import datetime
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, Optional
 from src.config import config
 from src import db
+
+def normalize_google_sheets_url(url: str) -> str:
+    """
+    Transforms any Google Sheets URL (sharing link, edit link, or /pub link)
+    into the real-time Live Direct Export endpoint (/export?format=csv).
+    Bypasses Google's 3-5 minute /pub CDN edge cache.
+    """
+    if not url:
+        return ""
+    
+    url = url.strip()
+    # Check if already an export URL
+    if "/export?format=csv" in url or "/export?" in url:
+        return url
+
+    # Extract spreadsheet ID from /spreadsheets/d/{ID}
+    match = re.search(r"/spreadsheets/d/(?:e/)?([a-zA-Z0-9-_]+)", url)
+    if not match:
+        return url
+
+    sheet_id = match.group(1)
+
+    # Extract gid (worksheet tab) if present
+    gid_match = re.search(r"[?&#]gid=(\d+)", url)
+    gid_param = f"&gid={gid_match.group(1)}" if gid_match else ""
+
+    # Check if it's a published web URL (/pub)
+    if "/pub" in url:
+        return url
+
+    # Standard spreadsheet ID -> Live Direct Export endpoint
+    return f"https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv{gid_param}"
 
 class GoogleFormsSync:
     def __init__(self):
@@ -17,15 +50,18 @@ class GoogleFormsSync:
 
     def fetch_and_sync(self) -> Tuple[int, int, str]:
         """
-        Fetches published CSV from Google Sheet and syncs attendees into SQLite.
-        Uses epoch timestamp cache-busting and no-cache headers to bypass Google CDN lag.
+        Fetches CSV from Google Sheet (via Live Direct Export or published CSV)
+        and syncs attendees into SQLite in real time.
         """
-        csv_url = config.google_sheet_csv_url
-        if not csv_url:
+        raw_url = config.google_sheet_csv_url
+        if not raw_url:
             return 0, 0, "No Google Sheet CSV URL configured."
 
+        # Automatically normalize to Live Direct Export endpoint if applicable
+        csv_url = normalize_google_sheets_url(raw_url)
+
         try:
-            # Append epoch timestamp cache-buster to bypass Google's 2-5 min CDN edge caching
+            # Append epoch timestamp cache-buster to bypass any intermediate caching
             cache_busted_url = csv_url
             if "?" in csv_url:
                 cache_busted_url = f"{csv_url}&_t={int(time.time())}"
@@ -43,6 +79,9 @@ class GoogleFormsSync:
                 }
             )
             with urllib.request.urlopen(req, context=ctx, timeout=15) as resp:
+                final_url = resp.geturl()
+                if "accounts.google.com" in final_url or "ServiceLogin" in final_url:
+                    return 0, 0, "Permission Error: Set Google Sheet sharing to 'Anyone with the link can view'."
                 content = resp.read().decode("utf-8-sig")
 
             reader = csv.DictReader(io.StringIO(content))
