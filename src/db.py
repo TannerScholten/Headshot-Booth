@@ -174,16 +174,10 @@ def search_attendees(query: str = "", filter_type: str = "all", limit: int = 40)
         
         where_clause = "(a.first_name LIKE ? OR a.last_name LIKE ? OR (a.first_name || ' ' || a.last_name) LIKE ? OR a.email LIKE ? OR a.organization LIKE ? OR CAST(a.id AS TEXT) LIKE ?)"
         
-        order_clause = "a.first_name COLLATE NOCASE ASC, a.last_name COLLATE NOCASE ASC"
-        
         if filter_type == "unshot":
             where_clause += " AND (SELECT COUNT(*) FROM delivery_records WHERE attendee_id = a.id) = 0"
-            order_clause = "a.id DESC"
         elif filter_type == "delivered":
             where_clause += " AND (SELECT COUNT(*) FROM delivery_records WHERE attendee_id = a.id AND status = 'SENT') > 0"
-            order_clause = "(SELECT COALESCE(MAX(d.delivered_at), MAX(d.created_at)) FROM delivery_records d WHERE d.attendee_id = a.id) DESC"
-        else:
-            order_clause = "a.first_name COLLATE NOCASE ASC, a.last_name COLLATE NOCASE ASC"
 
         sql = f"""
         SELECT a.*, 
@@ -191,7 +185,7 @@ def search_attendees(query: str = "", filter_type: str = "all", limit: int = 40)
                (SELECT COUNT(*) FROM sessions WHERE attendee_id = a.id) as session_count
         FROM attendees a
         WHERE {where_clause}
-        ORDER BY {order_clause}
+        ORDER BY a.updated_at DESC
         LIMIT ?
         """
         cursor.execute(sql, (query_str, query_str, query_str, query_str, query_str, query_str, limit))
@@ -284,11 +278,10 @@ def create_new_session_for_attendee(attendee_id: int) -> int:
 def record_delivery_queued(attendee_id: int, filename: str, file_path: str = "") -> int:
     with get_connection() as conn:
         cursor = conn.cursor()
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
         cursor.execute("""
-        INSERT INTO delivery_records (attendee_id, filename, file_path, status, created_at)
-        VALUES (?, ?, ?, 'QUEUED', ?)
-        """, (attendee_id, filename, file_path, now))
+        INSERT INTO delivery_records (attendee_id, filename, file_path, status)
+        VALUES (?, ?, ?, 'QUEUED')
+        """, (attendee_id, filename, file_path))
         conn.commit()
         return cursor.lastrowid
 
@@ -300,7 +293,7 @@ def update_delivery_status(
 ) -> None:
     with get_connection() as conn:
         cursor = conn.cursor()
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now = datetime.utcnow().isoformat()
         
         if status == 'UPLOADED':
             cursor.execute("""
@@ -331,7 +324,7 @@ def update_delivery_sms_status(
 ) -> None:
     with get_connection() as conn:
         cursor = conn.cursor()
-        now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        now = datetime.utcnow().isoformat()
         if sms_status == 'SENT':
             cursor.execute("""
             UPDATE delivery_records 
@@ -347,19 +340,6 @@ def update_delivery_sms_status(
         else:
             cursor.execute("UPDATE delivery_records SET sms_status = ? WHERE id = ?", (sms_status, delivery_id))
         conn.commit()
-
-def has_attendee_received_delivery(attendee_id: int) -> bool:
-    """
-    Checks if an email/delivery notice has already been successfully sent to this attendee.
-    Prevents duplicate emails when exporting multiple photos or uploading re-edits.
-    """
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute(
-            "SELECT 1 FROM delivery_records WHERE attendee_id = ? AND status = 'SENT' LIMIT 1",
-            (attendee_id,)
-        )
-        return cursor.fetchone() is not None
 
 def get_pending_deliveries() -> List[Dict[str, Any]]:
     with get_connection() as conn:
@@ -385,48 +365,6 @@ def get_recent_deliveries(limit: int = 50) -> List[Dict[str, Any]]:
         """, (limit,))
         return [dict(r) for r in cursor.fetchall()]
 
-def get_grouped_recent_deliveries(limit: int = 35) -> List[Dict[str, Any]]:
-    """
-    Returns recent deliveries grouped by unique Attendee (1 card per person),
-    with aggregated status and detailed individual photo files/statuses.
-    """
-    with get_connection() as conn:
-        cursor = conn.cursor()
-        cursor.execute("""
-        SELECT 
-            a.id as attendee_id,
-            a.first_name,
-            a.last_name,
-            a.email,
-            a.phone,
-            a.organization,
-            a.zenfolio_gallery_url,
-            MAX(d.created_at) as latest_created_at,
-            MAX(d.delivered_at) as latest_delivered_at,
-            COUNT(d.id) as total_photos,
-            SUM(CASE WHEN d.status = 'SENT' THEN 1 ELSE 0 END) as sent_count,
-            SUM(CASE WHEN d.status = 'FAILED' THEN 1 ELSE 0 END) as failed_count,
-            SUM(CASE WHEN d.status IN ('QUEUED', 'UPLOADED') THEN 1 ELSE 0 END) as pending_count
-        FROM delivery_records d
-        JOIN attendees a ON d.attendee_id = a.id
-        GROUP BY a.id
-        ORDER BY MAX(COALESCE(d.delivered_at, d.created_at)) DESC
-        LIMIT ?
-        """, (limit,))
-        
-        attendees = [dict(r) for r in cursor.fetchall()]
-        
-        for att in attendees:
-            cursor.execute("""
-            SELECT id, filename, status, error_message, created_at, delivered_at
-            FROM delivery_records
-            WHERE attendee_id = ?
-            ORDER BY id ASC
-            """, (att["attendee_id"],))
-            att["photos"] = [dict(p) for p in cursor.fetchall()]
-            
-        return attendees
-
 def get_stats() -> Dict[str, Any]:
     with get_connection() as conn:
         cursor = conn.cursor()
@@ -435,9 +373,6 @@ def get_stats() -> Dict[str, Any]:
         
         cursor.execute("SELECT COUNT(*) as count FROM delivery_records WHERE status = 'SENT'")
         sent_deliveries = cursor.fetchone()["count"]
-
-        cursor.execute("SELECT COUNT(DISTINCT attendee_id) as count FROM delivery_records WHERE status = 'SENT'")
-        clients_shot = cursor.fetchone()["count"]
         
         cursor.execute("SELECT COUNT(*) as count FROM delivery_records WHERE status IN ('QUEUED', 'UPLOADED')")
         pending_deliveries = cursor.fetchone()["count"]
@@ -449,13 +384,10 @@ def get_stats() -> Dict[str, Any]:
         sent_sms = cursor.fetchone()["count"]
         
         cursor.execute("SELECT value FROM system_state WHERE key = 'last_google_sync'")
-        row = cursor.fetchone()
-        last_sync = row["value"] if row else "Never"
+        last_sync = cursor.fetchone()["value"]
         
         return {
             "total_attendees": total_attendees,
-            "clients_shot": clients_shot,
-            "total_photos": sent_deliveries,
             "sent_deliveries": sent_deliveries,
             "sent_sms": sent_sms,
             "pending_deliveries": pending_deliveries,

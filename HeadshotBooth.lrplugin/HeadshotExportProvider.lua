@@ -13,29 +13,23 @@ local LrTasks = import 'LrTasks'
 
 local exportServiceProvider = {}
 
-exportServiceProvider.hideSections = { 'exportLocation' }
-exportServiceProvider.canExportToTemporaryLocation = true
+-- Export Dialog Settings & Presets
+exportServiceProvider.hideSections = { 'exportLocation', 'fileNaming' }
 exportServiceProvider.allowFileFormats = { 'JPEG' }
 exportServiceProvider.allowColorSpaces = { 'sRGB' }
 exportServiceProvider.canExportVideo = false
 
-exportServiceProvider.exportPresetFields = {
-    { key = 'deliveryService', default = 'HeadshotBooth' },
+exportServiceProvider.exportPresetProperties = {
+    LR_format = "JPEG",
+    LR_jpeg_quality = 0.85,
+    LR_jpeg_useLimitSize = false,
+    LR_outputSharpeningOn = false,
+    LR_size_doConstrain = false,
+    LR_metadata_filter = "all",
+    LR_embeddedMetadataOption = "all",
 }
 
-function exportServiceProvider.startDialog( propertyTable )
-    propertyTable.LR_cantExportBecause = nil
-    propertyTable.LR_format = "JPEG"
-    propertyTable.LR_jpeg_quality = 0.85
-    propertyTable.LR_export_colorSpace = "sRGB"
-    propertyTable.LR_metadata_filter = "all"
-    propertyTable.LR_embeddedMetadataOption = "all"
-    propertyTable.LR_outputSharpeningOn = false
-    propertyTable.LR_size_doConstrain = false
-end
-
-function exportServiceProvider.sectionsForTopOfDialog( _, propertyTable )
-    local f = LrView.osFactory()
+function exportServiceProvider.sectionsForTopOfDialog( f, propertyTable )
     return {
         {
             title = "Headshot Booth Delivery Service",

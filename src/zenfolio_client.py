@@ -101,10 +101,13 @@ class ZenfolioClient:
 
         full_name = f"{attendee['first_name']} {attendee['last_name']}".strip()
         gallery_title = f"{full_name} - {attendee['id']}"
+        caption = f"Complimentary Headshots for {full_name}"
+        if attendee.get("organization"):
+            caption += f" ({attendee['organization']})"
 
         updater = {
             "Title": gallery_title,
-            "Caption": ""
+            "Caption": caption
         }
 
         photoset = self._call("CreatePhotoSet", [parent_group_id, "Gallery", updater])

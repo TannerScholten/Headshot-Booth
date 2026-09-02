@@ -42,43 +42,22 @@ def process_exported_photo(
         photo_id = zenfolio.upload_photo(upload_url, file_path, filename)
         db.update_delivery_status(delivery_id, "UPLOADED", zenfolio_photo_id=photo_id)
 
-        # 4. Email Dispatch (Only send if the attendee hasn't already received their gallery link!)
-        already_emailed = db.has_attendee_received_delivery(attendee_id)
+        # 4. Email Dispatch
         email_sent = False
-
         if config.auto_send_emails:
-            if not already_emailed:
-                success, msg = email_service.send_delivery_email(attendee)
-                if success:
-                    db.update_delivery_status(delivery_id, "SENT")
-                    email_sent = True
-                else:
-                    db.update_delivery_status(delivery_id, "FAILED", error_message=msg)
-            else:
-                # Already received their permanent gallery link! Mark photo delivery as SENT without sending duplicate email.
+            success, msg = email_service.send_delivery_email(attendee)
+            if success:
                 db.update_delivery_status(delivery_id, "SENT")
                 email_sent = True
-                print(f"[Delivery] Uploaded {filename} to {attendee.get('first_name')} {attendee.get('last_name')}'s gallery. Duplicate email suppressed (gallery already delivered).")
+            else:
+                db.update_delivery_status(delivery_id, "FAILED", error_message=msg)
         else:
             db.update_delivery_status(delivery_id, "HELD")
 
-        # 5. Optional SMS Dispatch (Only send on initial delivery)
-        if not already_emailed:
-            phone = attendee.get("phone", "")
-            full_name = f"{attendee.get('first_name', '')} {attendee.get('last_name', '')}".strip()
-            sms_service.queue_sms(delivery_id, phone, full_name, gallery_url)
-
-        # 6. Auto-Archive processed file out of watch directory to prevent any duplicate re-processing
-        try:
-            archive_dir = file_path.parent / "_Delivered_Archive"
-            archive_dir.mkdir(parents=True, exist_ok=True)
-            archive_target = archive_dir / filename
-            if file_path.exists() and file_path != archive_target:
-                if archive_target.exists():
-                    archive_target.unlink()
-                file_path.rename(archive_target)
-        except Exception as move_err:
-            print(f"[DeliveryWatcher] Notice moving to archive: {move_err}")
+        # 5. Optional SMS Dispatch (Graceful Degradation: Asynchronous & Decoupled)
+        phone = attendee.get("phone", "")
+        full_name = f"{attendee.get('first_name', '')} {attendee.get('last_name', '')}".strip()
+        sms_service.queue_sms(delivery_id, phone, full_name, gallery_url)
 
         if email_sent:
             return True, f"Successfully uploaded and delivered to {attendee['email']} ({gallery_url})"
@@ -92,67 +71,22 @@ def process_exported_photo(
         db.update_delivery_status(delivery_id, "FAILED", error_message=error_msg)
         return False, f"Delivery error for {attendee.get('first_name')}: {error_msg}"
 
-def resolve_attendee_id_for_photo(file_path: Path) -> Optional[int]:
+def parse_attendee_id_from_filename(filename: str) -> Optional[int]:
     """
-    Robust Multi-Attendee Batch Resolution:
-    1. Check embedded IPTC/EXIF metadata (Email) directly inside exported JPEG bytes
-    2. Check companion XMP sidecar in 01_Tether_Ingest matching raw filename
-    3. Check explicit ID pattern in filename (e.g. ID_1012.jpg or 1012_Name.jpg)
-    4. Fall back to current active attendee on HUD (only for un-tagged files)
+    Parses attendee ID from standard filenames like:
+    - 1001_Jane_Smith_01.jpg
+    - Jane_Smith_1001.jpg
+    - 1001.jpg
     """
-    # 1. Check embedded email directly inside JPEG binary headers
-    try:
-        if file_path.exists():
-            header = file_path.read_bytes()[:150000] # First 150KB contains EXIF/IPTC
-            emails = re.findall(rb'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+', header)
-            for em in emails:
-                em_str = em.decode('utf-8', errors='ignore').strip()
-                att = db.get_attendee_by_email(em_str)
-                if att:
-                    return att["id"]
-    except Exception as err:
-        print(f"[DeliveryWatcher] IPTC extraction notice: {err}")
-
-    # 2. Check companion XMP sidecar in tether ingest directory
-    stem = file_path.stem.split('_')[0] + '_' + file_path.stem.split('_')[1] if '_' in file_path.stem else file_path.stem
-    tether_dir = config.tether_ingest_dir
-    if tether_dir.exists():
-        for xmp_file in tether_dir.rglob(f"{stem}.xmp"):
-            try:
-                content = xmp_file.read_text(encoding="utf-8", errors="ignore")
-                # Try finding attendee by headline name
-                m_name = re.search(r'<photoshop:Headline>([^<]+)</photoshop:Headline>', content)
-                if m_name:
-                    headline = m_name.group(1).strip().lower()
-                    for a in db.search_attendees(''):
-                        if a['first_name'].lower() in headline and a['last_name'].lower() in headline:
-                            return a['id']
-
-                # Try finding attendee by ID
-                xmp_match = re.search(r'Attendee_(\d+)_Session', content)
-                if xmp_match:
-                    att_id = int(xmp_match.group(1))
-                    if db.get_attendee_by_id(att_id):
-                        return att_id
-            except Exception:
-                pass
-
-    # 3. Check explicit pattern like ID_1012 or 1012_
-    match = re.search(r'(?:^|_)ID_?(\d{4})(?:_|$)', file_path.stem, re.IGNORECASE)
+    match = re.search(r'\b(1\d{3,4})\b', filename)
     if match:
         return int(match.group(1))
-
-    # 4. Fall back to current active attendee on HUD (only for un-tagged files)
-    active = db.get_active_attendee()
-    if active:
-        return active["id"]
-
     return None
 
 class ReadyToDeliverWatcher:
     """
     Background folder watcher for Ready_To_Deliver directory.
-    Watches top-level directory and auto-archives processed files to _Delivered_Archive.
+    Useful when exporting via standard Lightroom export presets.
     """
     def __init__(self):
         self._running = False
@@ -177,25 +111,23 @@ class ReadyToDeliverWatcher:
         while self._running:
             try:
                 if watch_dir.exists():
-                    # Top-level only, ignoring _Delivered_Archive subfolder
-                    for file_path in sorted(watch_dir.glob("*.[jJ][pP][gG]")):
-                        file_key = str(file_path.resolve())
-                        if file_key in self._processed_files:
+                    for file_path in watch_dir.glob("*.[jJ][pP][gG]"):
+                        if file_path.name in self._processed_files:
                             continue
                         
                         # Debounce file-write completion
                         if self._is_file_ready(file_path):
-                            self._processed_files.add(file_key)
+                            self._processed_files.add(file_path.name)
                             
-                            # Resolve attendee via companion XMP or active attendee
-                            att_id = resolve_attendee_id_for_photo(file_path)
+                            # Parse attendee ID or use active attendee
+                            att_id = parse_attendee_id_from_filename(file_path.name)
+                            if not att_id:
+                                active = db.get_active_attendee()
+                                if active:
+                                    att_id = active["id"]
 
                             if att_id:
-                                success, msg = process_exported_photo(att_id, file_path)
-                                if not success and file_path.exists():
-                                    self._processed_files.discard(file_key)
-                            else:
-                                self._processed_files.discard(file_key)
+                                process_exported_photo(att_id, file_path)
             except Exception as e:
                 print(f"[ReadyToDeliverWatcher] Error: {e}")
 

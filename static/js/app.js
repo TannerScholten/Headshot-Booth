@@ -3,7 +3,7 @@ let activeAttendeeId = null;
 let searchDebounceTimer = null;
 let highlightedIndex = 0;
 let chimeEnabled = localStorage.getItem("chimeEnabled") !== "false";
-let currentFilter = "unshot";
+let currentFilter = "all";
 
 const searchInput = document.getElementById("search-input");
 const attendeeList = document.getElementById("attendee-list");
@@ -23,8 +23,7 @@ document.addEventListener("DOMContentLoaded", () => {
         btnSync.addEventListener("click", syncGoogle);
     }
 
-    // Initial poll and live update loop every 4 seconds
-    pollStatus();
+    // Live update loop every 4 seconds
     setInterval(pollStatus, 4000);
 });
 
@@ -122,10 +121,7 @@ function setupKeyboardShortcuts() {
 
         // Escape -> Close modal or clear search
         if (e.key === "Escape") {
-            const qrModal = document.getElementById("qr-modal");
-            if (qrModal && qrModal.classList.contains("active")) {
-                closeQrModal();
-            } else if (walkinModal.classList.contains("active")) {
+            if (walkinModal.classList.contains("active")) {
                 closeWalkInModal();
             } else if (searchInput.value) {
                 clearSearch();
@@ -152,11 +148,13 @@ function setupKeyboardShortcuts() {
             return;
         }
 
-        // Enter in search -> Select highlighted result
+        // Enter in search -> Select highlighted result or first item
         if (e.key === "Enter" && document.activeElement === searchInput) {
             e.preventDefault();
             if (highlightedIndex >= 0 && highlightedIndex < items.length) {
                 items[highlightedIndex].click();
+            } else if (items.length > 0) {
+                items[0].click();
             }
         }
     });
@@ -208,24 +206,16 @@ function clearSearch() {
 
 function renderAttendeeList(attendees) {
     if (!attendees || attendees.length === 0) {
-        attendeeList.innerHTML = `
-            <div style="padding: 24px; text-align: center; color: #64748b;">
-                <p style="margin: 0 0 12px 0;">No matching attendees found.</p>
-                <div style="display: flex; gap: 8px; justify-content: center;">
-                    <button class="btn btn-secondary btn-sm" onclick="syncGoogle()">🔄 Sync Form Now</button>
-                    <button class="btn btn-primary btn-sm" onclick="openWalkInModal()">⚡ Quick Walk-In (Alt+N)</button>
-                </div>
-            </div>`;
+        attendeeList.innerHTML = `<div style="padding: 20px; text-align: center; color: #64748b;">No attendees found.</div>`;
         highlightedIndex = -1;
         return;
     }
 
-    // Auto-highlight first item only when user has typed an active search query
-    const hasQuery = searchInput.value.trim().length > 0;
-    highlightedIndex = hasQuery ? 0 : -1;
+    // Default highlight first result for instant Enter-key selection
+    highlightedIndex = 0;
 
     attendeeList.innerHTML = attendees.map((a, idx) => `
-        <div class="attendee-item ${idx === highlightedIndex ? 'highlighted' : ''} ${activeAttendeeId === a.id ? 'selected' : ''}" onclick="selectAttendee(${a.id})">
+        <div class="attendee-item ${idx === 0 ? 'highlighted' : ''} ${activeAttendeeId === a.id ? 'selected' : ''}" onclick="selectAttendee(${a.id})">
             <div class="item-left">
                 <span class="item-id">#${a.id}</span>
                 <div class="item-info">
@@ -285,21 +275,6 @@ async function newSession(id) {
     }
 }
 
-async function resendEmail(id) {
-    try {
-        showToast("Sending gallery email...", "info");
-        const resp = await fetch(`/api/attendee/${id}/resend-email`, { method: "POST" });
-        const data = await resp.json();
-        if (resp.ok) {
-            showToast(data.message, "success");
-        } else {
-            showToast(data.detail || "Failed to send email", "error");
-        }
-    } catch (e) {
-        showToast("Network error resending email", "error");
-    }
-}
-
 function copyGalleryUrl(url) {
     if (!url) return;
     navigator.clipboard.writeText(url).then(() => {
@@ -325,75 +300,44 @@ async function retryFailedDeliveries() {
 function renderActiveCard(attendee) {
     if (!attendee) {
         activeCard.classList.remove("active-selected");
-        activeCard.style.display = "flex";
-        activeCard.style.justifyContent = "space-between";
-        activeCard.style.alignItems = "center";
-        activeCard.style.padding = "10px 18px";
-        activeCard.style.minHeight = "80px";
-        activeCard.style.gap = "16px";
         activeCard.innerHTML = `
-            <div class="active-left-col empty-state-compact" style="flex: 1; display: flex; flex-direction: column; justify-content: center; gap: 4px;">
-                <div class="active-header-row">
-                    <span class="active-tag" style="font-size: 10px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase;">CURRENT ACTIVE SUBJECT</span>
-                </div>
-                <div class="active-name-row" style="display: flex; align-items: baseline; gap: 12px;">
-                    <h2 class="active-name text-muted" style="font-size: 26px; font-weight: 800; line-height: 1.1; margin: 0;">No Subject Selected</h2>
-                    <span class="empty-hint" style="font-size: 13px; color: #94a3b8;">Type a name below or press <strong>Alt+N</strong> for walk-in registration</span>
-                </div>
-            </div>
-            <div class="active-qr-box" onclick="openQrModal()" title="Click to enlarge Walk-Up Registration QR Code" style="display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(15, 23, 42, 0.85); border: 1px solid #334155; border-radius: 8px; padding: 6px 8px; cursor: pointer; flex-shrink: 0; width: 124px;">
-                <img src="/static/img/registration_qr.png" alt="Register QR" class="active-qr-img" style="width: 110px; height: 110px; max-width: 110px; max-height: 110px; background: #ffffff; border-radius: 6px; padding: 3px; display: block;">
-                <span class="active-qr-label" style="font-size: 10px; font-weight: 700; color: #38bdf8; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;">📱 Scan to Register</span>
+            <div class="active-tag">CURRENT ACTIVE SUBJECT</div>
+            <div class="active-content empty-state">
+                <div class="empty-icon">📷</div>
+                <h2 class="active-name text-muted">No Subject Selected</h2>
+                <p class="empty-hint">Type a name below or press <strong>Alt+N</strong> for walk-in registration</p>
             </div>
         `;
         return;
     }
 
     activeCard.classList.add("active-selected");
-    activeCard.style.display = "flex";
-    activeCard.style.justifyContent = "space-between";
-    activeCard.style.alignItems = "center";
-    activeCard.style.padding = "10px 18px";
-    activeCard.style.minHeight = "80px";
-    activeCard.style.gap = "16px";
     activeCard.innerHTML = `
-        <div class="active-left-col" style="flex: 1; display: flex; flex-direction: column; gap: 3px; min-width: 0;">
-            <div class="active-header-row" style="display: flex; align-items: center; gap: 10px;">
-                <span class="active-tag" style="font-size: 10px; font-weight: 800; letter-spacing: 1.5px; text-transform: uppercase;">CURRENT ACTIVE SUBJECT</span>
-                <span class="active-id-badge" style="padding: 1px 7px; font-size: 11px;">ID: ${attendee.id}</span>
+        <div class="active-tag">CURRENT ACTIVE SUBJECT</div>
+        <div class="active-content">
+            <div class="active-id-badge">ID: ${attendee.id}</div>
+            <h2 class="active-name">${escapeHtml(attendee.first_name)} ${escapeHtml(attendee.last_name)}</h2>
+            <div class="active-details">
+                ${attendee.title ? `<span class="active-title">${escapeHtml(attendee.title)}</span>` : ''}
+                ${attendee.organization ? `<span class="active-org"> &bull; ${escapeHtml(attendee.organization)}</span>` : ''}
             </div>
-            <div class="active-name-row" style="display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap;">
-                <h2 class="active-name" style="font-size: 26px; font-weight: 800; color: #ffffff; line-height: 1.1; margin: 0;">${escapeHtml(attendee.first_name)} ${escapeHtml(attendee.last_name)}</h2>
-                <div class="active-details" style="font-size: 14px; color: #cbd5e1; margin: 0;">
-                    ${attendee.title ? `<span class="active-title">${escapeHtml(attendee.title)}</span>` : ''}
-                    ${attendee.organization ? `<span class="active-org">&bull; ${escapeHtml(attendee.organization)}</span>` : ''}
-                </div>
-            </div>
-            <div class="active-meta-row" style="display: flex; align-items: center; gap: 14px; font-size: 12px; color: #94a3b8; flex-wrap: wrap;">
+            <div class="active-meta">
                 <span class="active-email">✉️ ${escapeHtml(attendee.email)}</span>
                 ${attendee.phone ? `<span class="active-phone">📞 ${escapeHtml(attendee.phone)}</span>` : ''}
                 ${attendee.zenfolio_gallery_url ? `
-                <span class="gallery-link-group" style="display: inline-flex; align-items: center; gap: 4px;">
-                    <a href="${attendee.zenfolio_gallery_url}" target="_blank" class="active-gallery-link">🔗 Gallery</a>
-                    <button class="btn-copy-url" onclick="copyGalleryUrl('${attendee.zenfolio_gallery_url}')" title="Copy gallery link">📋 Copy</button>
+                <span class="gallery-link-group">
+                    <a href="${attendee.zenfolio_gallery_url}" target="_blank" class="active-gallery-link">🔗 Private Gallery</a>
+                    <button class="btn-copy-url" onclick="copyGalleryUrl('${attendee.zenfolio_gallery_url}')" title="Copy gallery link">📋 Copy Link</button>
                 </span>` : ''}
-                <div class="active-actions-inline" style="display: inline-flex; align-items: center; gap: 6px; margin-left: auto;">
-                    ${attendee.zenfolio_gallery_url ? `
-                    <button class="btn btn-xs btn-secondary" onclick="resendEmail(${attendee.id})" title="Manually re-send gallery notice email">
-                        ✉️ Resend
-                    </button>` : ''}
-                    <button class="btn btn-xs btn-warning" onclick="newSession(${attendee.id})" title="Outfit change / session 2">
-                        👔 Outfit #2
-                    </button>
-                    <button class="btn btn-xs btn-outline" onclick="clearActive()" title="Clear active subject">
-                        ✕ Clear
-                    </button>
-                </div>
             </div>
-        </div>
-        <div class="active-qr-box" onclick="openQrModal()" title="Click to enlarge Walk-Up Registration QR Code" style="display: flex; flex-direction: column; align-items: center; justify-content: center; background: rgba(15, 23, 42, 0.85); border: 1px solid #334155; border-radius: 8px; padding: 6px 8px; cursor: pointer; flex-shrink: 0; width: 124px;">
-            <img src="/static/img/registration_qr.png" alt="Register QR" class="active-qr-img" style="width: 110px; height: 110px; max-width: 110px; max-height: 110px; background: #ffffff; border-radius: 6px; padding: 3px; display: block;">
-            <span class="active-qr-label" style="font-size: 10px; font-weight: 700; color: #38bdf8; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px; white-space: nowrap;">📱 Scan to Register</span>
+            <div class="active-actions">
+                <button class="btn btn-warning" onclick="newSession(${attendee.id})">
+                    👔 Outfit Change / Session #2
+                </button>
+                <button class="btn btn-outline" onclick="clearActive()">
+                    ✕ Clear Subject
+                </button>
+            </div>
         </div>
     `;
 }
@@ -413,22 +357,6 @@ function openWalkInModal() {
 function closeWalkInModal() {
     walkinModal.classList.remove("active");
     searchInput.focus();
-}
-
-function openQrModal() {
-    const qrModal = document.getElementById("qr-modal");
-    if (qrModal) {
-        qrModal.style.display = "flex";
-        qrModal.classList.add("active");
-    }
-}
-
-function closeQrModal() {
-    const qrModal = document.getElementById("qr-modal");
-    if (qrModal) {
-        qrModal.style.display = "none";
-        qrModal.classList.remove("active");
-    }
 }
 
 async function submitWalkIn(event) {
@@ -496,69 +424,37 @@ function renderQueueList(deliveries) {
     }
 
     queueList.innerHTML = deliveries.map(d => {
-        let statusBadge = `<span class="badge badge-success">✅ ${d.total_photos} photo${d.total_photos > 1 ? 's' : ''}</span>`;
-        if (d.failed_count > 0) {
-            statusBadge = `<span class="badge badge-danger" title="${d.failed_count} failed delivery attempts">⚠️ ${d.failed_count} Failed</span>`;
-        } else if (d.pending_count > 0) {
-            statusBadge = `<span class="badge badge-warning">⏳ ${d.pending_count} Pending</span>`;
-        }
+        let emailBadgeClass = "badge-info";
+        if (d.status === "SENT") emailBadgeClass = "badge-success";
+        if (d.status === "FAILED") emailBadgeClass = "badge-danger";
+        if (d.status === "HELD" || d.status === "QUEUED") emailBadgeClass = "badge-warning";
 
-        // Format timestamp cleanly
-        let timeStr = "";
-        const ts = d.latest_delivered_at || d.latest_created_at;
-        if (ts) {
-            try {
-                const dt = new Date(ts.replace(" ", "T"));
-                timeStr = dt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-            } catch (e) {
-                timeStr = ts.substring(11, 16);
-            }
+        let smsBadge = "";
+        if (d.sms_status && d.sms_status !== "DISABLED" && d.sms_status !== "NOT_PROVIDED") {
+            let smsBadgeClass = "badge-info";
+            if (d.sms_status === "SENT") smsBadgeClass = "badge-success";
+            if (d.sms_status === "FAILED") smsBadgeClass = "badge-danger";
+            if (d.sms_status === "QUEUED") smsBadgeClass = "badge-warning";
+            smsBadge = `<span class="badge ${smsBadgeClass}" title="SMS Delivery Status">💬 SMS: ${d.sms_status}</span>`;
         }
-
-        // Build individual photo status chips
-        const photoChips = (d.photos || []).map(p => {
-            let chipClass = "chip-sent";
-            let chipIcon = "✓";
-            if (p.status === "FAILED") {
-                chipClass = "chip-failed";
-                chipIcon = "✕";
-            } else if (p.status === "QUEUED" || p.status === "UPLOADED") {
-                chipClass = "chip-pending";
-                chipIcon = "⏳";
-            }
-            const fname = p.export_filename || p.raw_filename || "Photo";
-            const tooltip = p.error_message ? `title="${escapeHtml(p.error_message)}"` : `title="Status: ${p.status}"`;
-            return `<span class="photo-chip ${chipClass}" ${tooltip}>${chipIcon} ${escapeHtml(fname)}</span>`;
-        }).join("");
 
         return `
             <div class="queue-item">
                 <div class="queue-header">
-                    <div class="queue-name-group">
-                        <span class="queue-att-id">#${d.attendee_id}</span>
-                        <span class="queue-name">${escapeHtml(d.first_name)} ${escapeHtml(d.last_name)}</span>
-                    </div>
-                    <div style="display: flex; gap: 6px; align-items: center;">
-                        ${statusBadge}
-                        <span class="queue-time">${timeStr}</span>
+                    <span>${escapeHtml(d.first_name)} ${escapeHtml(d.last_name)}</span>
+                    <div style="display: flex; gap: 4px; align-items: center;">
+                        <span class="badge ${emailBadgeClass}" title="Email Status">✉️ ${d.status}</span>
+                        ${smsBadge}
                     </div>
                 </div>
-                
-                <div class="queue-photos-row">
-                    ${photoChips}
-                </div>
-
-                <div class="queue-footer-row">
-                    <span class="queue-email" title="${escapeHtml(d.email)}">✉️ ${escapeHtml(d.email)}</span>
-                    ${d.zenfolio_gallery_url ? `<a href="${d.zenfolio_gallery_url}" target="_blank" class="queue-gallery-link">🔗 Gallery</a>` : ''}
-                    ${d.failed_count > 0 ? `<button class="btn-retry-inline" onclick="resendEmail(${d.attendee_id})">↻ Retry</button>` : ''}
+                <div class="queue-meta">
+                    <span>${escapeHtml(d.filename)}</span>
+                    <span>${d.delivered_at ? d.delivered_at.substring(11, 16) : ''}</span>
                 </div>
             </div>
         `;
     }).join("");
 }
-
-let lastTotalAttendees = 0;
 
 // --- Status Poller ---
 async function pollStatus() {
@@ -566,23 +462,9 @@ async function pollStatus() {
         const resp = await fetch("/api/active");
         const data = await resp.json();
         updateStats(data.stats);
-
-        // If new attendees synced, auto-refresh search roster
-        if (data.stats && data.stats.total_attendees !== lastTotalAttendees) {
-            lastTotalAttendees = data.stats.total_attendees;
-            fetchSearch(searchInput.value);
-        }
-
-        if (data.active) {
-            if (activeAttendeeId !== data.active.id) {
-                activeAttendeeId = data.active.id;
-                renderActiveCard(data.active);
-            }
-        } else {
-            if (activeAttendeeId !== null) {
-                activeAttendeeId = null;
-                renderActiveCard(null);
-            }
+        if (data.active && activeAttendeeId !== data.active.id) {
+            activeAttendeeId = data.active.id;
+            renderActiveCard(data.active);
         }
         refreshOutbox();
     } catch (e) {
@@ -592,13 +474,9 @@ async function pollStatus() {
 
 function updateStats(stats) {
     if (!stats) return;
-    const elTotal = document.getElementById("stat-total");
-    const elClients = document.getElementById("stat-clients");
-    const elPhotos = document.getElementById("stat-photos");
-    
-    if (elTotal) elTotal.textContent = stats.total_attendees || 0;
-    if (elClients) elClients.textContent = stats.clients_shot !== undefined ? stats.clients_shot : (stats.total_attendees || 0);
-    if (elPhotos) elPhotos.textContent = stats.total_photos || stats.sent_deliveries || 0;
+    document.getElementById("stat-total").textContent = stats.total_attendees || 0;
+    document.getElementById("stat-sent").textContent = stats.sent_deliveries || 0;
+    document.getElementById("stat-pending").textContent = stats.pending_deliveries || 0;
 }
 
 // --- Toast Alerts ---

@@ -68,8 +68,8 @@ Open `config.json` in Notepad or VS Code and update your credentials:
 ```json
 {
   "event_name": "Conference Headshots 2026",
-  "google_sheet_csv_url": "https://docs.google.com/spreadsheets/d/.../pub?output=csv",
-  "poll_interval_seconds": 30,
+  "google_sheet_csv_url": "https://docs.google.com/spreadsheets/d/YOUR_SHEET_ID/edit",
+  "poll_interval_seconds": 10,
   "auto_send_emails": true,
   "email_rate_limit_seconds": 1.8,
   "gmail": {
