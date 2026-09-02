@@ -91,8 +91,8 @@ Open `config.json` in Notepad or VS Code and update your credentials:
     "browser_profile_dir": "data/browser_profile"
   },
   "paths": {
-    "tether_ingest_dir": "shoot_folders/01_Tether_Ingest",
-    "ready_to_deliver_dir": "shoot_folders/03_Ready_To_Deliver",
+    "tether_ingest_dir": "C:/Users/tscho/Pictures/Headshots 2026/01_Tether_Ingest",
+    "ready_to_deliver_dir": "C:/Users/tscho/Pictures/Headshots 2026/02_Ready_To_Deliver",
     "database_file": "data/booth.db"
   }
 }
@@ -157,11 +157,13 @@ python mock_shoot.py
 * Open **`http://localhost:8000`** in Google Chrome or Microsoft Edge.
 
 ### 2. Configure Lightroom Classic Tethering
-1. Connect your **Canon EOS R5 Mark II** via USB-C.
-2. In Lightroom Classic: **File > Tethered Capture > Start Tethered Capture...**
-3. Set the **Destination Folder** to:  
-   `.../Headshot-Booth/shoot_folders/01_Tether_Ingest`
-4. Set File Naming to **Default (Camera File Name)**.
+1. **Critical for Canon R5 Mark II:** In Lightroom Classic, go to **Edit > Preferences > General** tab $\rightarrow$ Check **"Use Canon SDK for Tethering Canon Cameras"** $\rightarrow$ Restart Lightroom.
+2. Connect your **Canon EOS R5 Mark II** via USB-C.
+3. In Lightroom Classic: **File > Tethered Capture > Start Tethered Capture...**
+4. Set the **Destination Folder** to:  
+   `C:\Users\tscho\Pictures\Headshots 2026\01_Tether_Ingest`
+5. Set the **Session Name** to: `Day_1_Monday` (or current day).
+6. Set File Naming to **Original Filename** (or default camera filename).
 
 ### 3. In-Booth Shooting Flow
 1. **Intake / Selection:**

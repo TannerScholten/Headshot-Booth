@@ -114,3 +114,44 @@ class GoogleFormsSync:
 
 # Global sync instance
 forms_sync = GoogleFormsSync()
+
+def submit_walkin_to_google_form(
+    first_name: str,
+    last_name: str,
+    email: str,
+    phone: str = "",
+    organization: str = "",
+    title: str = ""
+) -> Tuple[bool, str]:
+    """
+    Submits walk-in registration data directly to the Google Form response endpoint
+    so that walk-ins appear automatically in the linked Google Sheet for long-term records.
+    """
+    form_url = getattr(config, "google_form_response_url", None) or "https://docs.google.com/forms/d/e/1FAIpQLSctBIGjIJh8DcOSTLCBfnLn3tFRV9DNeqdpsGGlcrMTJ8azmQ/formResponse"
+    
+    payload = {
+        "entry.1188454101": first_name.strip(),
+        "entry.695863666": last_name.strip(),
+        "entry.1656883919": email.strip(),
+        "entry.991914779": phone.strip(),
+        "entry.1871759233": organization.strip(),
+        "entry.751008980": title.strip(),
+    }
+    
+    try:
+        import urllib.parse
+        data = urllib.parse.urlencode(payload).encode("utf-8")
+        req = urllib.request.Request(
+            form_url,
+            data=data,
+            headers={
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64)",
+                "Content-Type": "application/x-www-form-urlencoded"
+            }
+        )
+        ctx = ssl.create_default_context()
+        with urllib.request.urlopen(req, context=ctx, timeout=10) as resp:
+            return True, "Successfully submitted walk-in to Google Form."
+    except Exception as e:
+        print(f"[GoogleFormsSync] Warning submitting walk-in to Google Form: {e}")
+        return False, str(e)
